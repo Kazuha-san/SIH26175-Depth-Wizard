@@ -1,0 +1,24 @@
+# Backend -- Python 3.10+
+fastapi
+uvicorn[standard]
+python-multipart
+
+# ML
+torch
+torchvision
+transformers
+datasets
+
+# Geospatial
+rasterio
+elevation
+
+# Numeric / utils
+numpy
+scipy
+opencv-python
+trimesh
+pygltflib
+
+# Dev / testing
+pytest

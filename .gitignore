@@ -1,0 +1,41 @@
+# --- Agent prompt files (local-only, not part of the codebase) ---
+agent-prompts/
+
+# --- Python (backend) ---
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# Model checkpoints / weights (large files, don't commit)
+backend/checkpoints/
+*.pth
+*.pt
+*.ckpt
+
+# Datasets (fetched locally, not committed)
+backend/data_cache/
+*.tif
+*.tiff
+!**/sample_*.tif
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+npm-debug.log*
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Env / secrets ---
+.env
+.env.local
