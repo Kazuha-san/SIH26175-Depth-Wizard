@@ -17,6 +17,7 @@ elevation
 numpy
 scipy
 opencv-python
+pillow
 trimesh
 pygltflib
 

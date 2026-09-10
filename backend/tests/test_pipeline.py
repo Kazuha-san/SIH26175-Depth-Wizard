@@ -1,7 +1,10 @@
 """
-Smoke tests for the pipeline stages. Start simple: shapes in == shapes out,
-no NaNs, calibration doesn't blow up on a dummy scene.
-Expand as each stage gets implemented.
+Smoke tests for the pipeline stages.
+
+Stage 2 (calibration, SRTM utils, GeoTIFF utils) now has real, passing tests
+in their own files: test_stage2_calibration.py, test_srtm_utils.py,
+test_geotiff_utils.py. This file is for Stage 1 (depth model) and Stage 3
+(mesh prep) once those have real implementations to test.
 """
 
 
@@ -10,6 +13,14 @@ def test_stage1_output_shape():
     pass
 
 
-def test_stage2_per_class_calibration_runs():
-    """TODO: once stage2_calibration.per_class_calibration exists, test on dummy arrays."""
+def test_stage1_gsd_normalization():
+    """TODO: once stage1_depth.normalize_gsd exists, test it resamples correctly
+    for a few different source_gsd_m values."""
+    pass
+
+
+def test_stage3_smoothing_preserves_edges():
+    """TODO: once stage3_mesh_prep.smooth_dsm exists, test it reduces noise
+    (e.g. variance in a flat region) while preserving a real step edge
+    (e.g. a synthetic building-height discontinuity)."""
     pass

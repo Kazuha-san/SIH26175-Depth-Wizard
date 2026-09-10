@@ -1,0 +1,157 @@
+[
+  {
+    "filename": "aerial_urban_nongeo.png",
+    "desc": "non-georeferenced",
+    "image_id": "1933af7d-6de7-4e06-b6ac-655c680916a5",
+    "upload_data": {
+      "image_id": "1933af7d-6de7-4e06-b6ac-655c680916a5",
+      "input_type": "non_georeferenced",
+      "metadata": {}
+    },
+    "proc_status": 200,
+    "proc_time": 16.16056489944458,
+    "srtm_used": false,
+    "srtm_fallback_reason": null,
+    "calibration_method": "none_relative_only",
+    "gsd_info": {
+      "mode": "assumed_no_metadata",
+      "source_gsd_m": null,
+      "target_gsd_m": 0.33,
+      "crop_side_px": 512,
+      "original_shape": [
+        512,
+        512
+      ]
+    },
+    "glb_path": "/tmp/depthwizard_meshes\\1933af7d-6de7-4e06-b6ac-655c680916a5.glb",
+    "glb_size": 3460340,
+    "mesh_info": {
+      "vertices": 65536,
+      "faces": 130050,
+      "z_min": -0.0024428919423371553,
+      "z_max": 1.0000319480895996,
+      "watertight": false,
+      "bounds": [
+        [
+          0.0,
+          0.0,
+          -0.0024428919423371553
+        ],
+        [
+          255.0,
+          255.0,
+          1.0000319480895996
+        ]
+      ]
+    },
+    "height_min": -0.01155790314078331,
+    "height_max": 1.0033537149429321
+  },
+  {
+    "filename": "san_francisco_geotiff.tif",
+    "desc": "georeferenced",
+    "image_id": "664684b5-7c4f-4e37-9c7e-5ea7f20e5a17",
+    "upload_data": {
+      "image_id": "664684b5-7c4f-4e37-9c7e-5ea7f20e5a17",
+      "input_type": "georeferenced",
+      "metadata": {
+        "crs": "EPSG:4326",
+        "bounds_wgs84": [
+          -122.42,
+          37.77,
+          -122.41,
+          37.78
+        ],
+        "resolution_m": 1.9463849417914627,
+        "width": 512,
+        "height": 512
+      }
+    },
+    "proc_status": 200,
+    "proc_time": 7.875058650970459,
+    "srtm_used": false,
+    "srtm_fallback_reason": "Call elevation.clip(bounds=bounds, output=out_path) -- left as a manual step since it needs network access this sandbox doesn't have.",
+    "calibration_method": "none_relative_only",
+    "gsd_info": {
+      "mode": "assumed_no_metadata",
+      "source_gsd_m": null,
+      "target_gsd_m": 0.33,
+      "crop_side_px": 512,
+      "original_shape": [
+        512,
+        512
+      ]
+    },
+    "glb_path": "/tmp/depthwizard_meshes\\664684b5-7c4f-4e37-9c7e-5ea7f20e5a17.glb",
+    "glb_size": 3460340,
+    "mesh_info": {
+      "vertices": 65536,
+      "faces": 130050,
+      "z_min": -0.0024428919423371553,
+      "z_max": 1.0000319480895996,
+      "watertight": false,
+      "bounds": [
+        [
+          0.0,
+          0.0,
+          -0.0024428919423371553
+        ],
+        [
+          255.0,
+          255.0,
+          1.0000319480895996
+        ]
+      ]
+    },
+    "height_min": -0.01155790314078331,
+    "height_max": 1.0033537149429321
+  },
+  {
+    "filename": "gamus_val_tile_01.png",
+    "desc": "GAMUS-with-groundtruth",
+    "image_id": "649336bb-ffe1-4bf1-a376-becea219cd7f",
+    "upload_data": {
+      "image_id": "649336bb-ffe1-4bf1-a376-becea219cd7f",
+      "input_type": "non_georeferenced",
+      "metadata": {}
+    },
+    "proc_status": 200,
+    "proc_time": 7.798403024673462,
+    "srtm_used": false,
+    "srtm_fallback_reason": null,
+    "calibration_method": "none_relative_only",
+    "gsd_info": {
+      "mode": "assumed_no_metadata",
+      "source_gsd_m": null,
+      "target_gsd_m": 0.33,
+      "crop_side_px": 512,
+      "original_shape": [
+        1024,
+        1024
+      ]
+    },
+    "glb_path": "/tmp/depthwizard_meshes\\649336bb-ffe1-4bf1-a376-becea219cd7f.glb",
+    "glb_size": 3435128,
+    "mesh_info": {
+      "vertices": 65536,
+      "faces": 130050,
+      "z_min": -7.651976920897141e-05,
+      "z_max": 1.000005841255188,
+      "watertight": false,
+      "bounds": [
+        [
+          0.0,
+          0.0,
+          -7.651976920897141e-05
+        ],
+        [
+          255.0,
+          255.0,
+          1.000005841255188
+        ]
+      ]
+    },
+    "height_min": -0.018855035305023193,
+    "height_max": 1.0130720138549805
+  }
+]
