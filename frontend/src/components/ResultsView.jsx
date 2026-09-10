@@ -78,7 +78,7 @@ const ResultsView = ({ selectedFile, resultData }) => {
             <button
               type="button"
               onClick={handleExport}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="rounded-lg border border-gray-300 bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 cursor-pointer"
             >
               Export JSON
             </button>

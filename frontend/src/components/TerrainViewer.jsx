@@ -3,6 +3,8 @@ import { Canvas } from "@react-three/fiber";
 
 import TerrainMesh from "./terrain/TerrainMesh";
 import TerrainCamera from "./terrain/TerrainCamera";
+import GroundGrid from "./terrain/GroundGrid";
+import { TERRAIN_SIZE } from "../utils/terrainUtils";
 
 const TerrainViewer = forwardRef(
   ({ resultData, verticalExaggeration = 0.5, cameraMode = "orbit", resetSignal = 0 }, ref) => {
@@ -20,8 +22,8 @@ const TerrainViewer = forwardRef(
           gl={{ antialias: true, powerPreference: "high-performance" }}
           camera={{ position: [0, 2.5, 5], fov: 60, near: 0.1, far: 1000 }}
         >
-          <color attach="background" args={["#dbe7ee"]} />
-          <fog attach="fog" args={["#dbe7ee", 25, 70]} />
+          <color attach="background" args={["#0b1117"]} />
+          <fog attach="fog" args={["#0b1117", 32, 80]} />
 
           <ambientLight intensity={0.55} />
           <hemisphereLight intensity={0.45} groundColor="#5f6b58" />
@@ -31,6 +33,8 @@ const TerrainViewer = forwardRef(
             intensity={1.25}
             shadow-mapSize={[2048, 2048]}
           />
+
+          <GroundGrid terrainSize={TERRAIN_SIZE} />
 
           <TerrainMesh
             resultData={resultData}
