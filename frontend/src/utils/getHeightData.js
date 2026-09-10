@@ -12,13 +12,18 @@ const base64ToArrayBuffer = (base64) => {
   return bytes.buffer;
 };
 
-const normalizeHeight = (sample, min, max) => {
-  return min + (sample / 65535) * (max - min);
-};
+const readBigEndianUint16 = (bytes, offset) =>
+  (bytes[offset] << 8) | bytes[offset + 1];
+
+const normalizeHeight = (sample, min, max) =>
+  min + (sample / 65535) * (max - min);
 
 /**
- * Decodes the backend 16-bit grayscale PNG into real-world height values.
- * This utility intentionally has no React or Three.js dependency.
+ * Decode the backend 16-bit grayscale PNG into elevation values.
+ *
+ * UPNG exposes 16-bit grayscale pixel data as bytes in PNG big-endian
+ * order. It must NOT be wrapped directly in Uint16Array because JS typed
+ * arrays use the platform's native byte order (normally little-endian).
  */
 export const getHeightData = (heightmapBase64, heightMin, heightMax) => {
   if (!heightmapBase64) {
@@ -49,42 +54,31 @@ export const getHeightData = (heightmapBase64, heightMin, heightMax) => {
   }
 
   const pixelCount = image.width * image.height;
-  const source = image.data;
+  const bytes = image.data instanceof Uint8Array
+    ? image.data
+    : new Uint8Array(image.data);
 
-  if (!source) {
-    throw new Error("Decoded heightmap contains no pixel data.");
-  }
+  const requiredBytes = pixelCount * 2;
 
-  let samples;
-
-  if (source instanceof Uint16Array) {
-    samples = source;
-  } else if (source instanceof Uint8Array && source.byteLength >= pixelCount * 2) {
-    samples = new Uint16Array(
-      source.buffer,
-      source.byteOffset,
-      pixelCount,
-    );
-  } else {
-    throw new Error("Heightmap decoder did not return 16-bit grayscale data.");
-  }
-
-  if (samples.length < pixelCount) {
+  if (bytes.byteLength < requiredBytes) {
     throw new Error(
-      `Heightmap data is incomplete. Expected ${pixelCount} pixels but received ${samples.length}.`,
+      `Heightmap data is incomplete. Expected at least ${requiredBytes} bytes but received ${bytes.byteLength}.`,
     );
   }
 
   const data = new Float32Array(pixelCount);
 
   for (let index = 0; index < pixelCount; index += 1) {
-    data[index] = normalizeHeight(samples[index], min, max);
+    const sample = readBigEndianUint16(bytes, index * 2);
+    data[index] = normalizeHeight(sample, min, max);
   }
 
   return {
     width: image.width,
     height: image.height,
     data,
+    min,
+    max,
   };
 };
 

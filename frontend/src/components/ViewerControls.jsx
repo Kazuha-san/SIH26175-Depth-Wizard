@@ -1,5 +1,5 @@
 import React from "react";
-import { Minus, Plus, RotateCcw, Maximize2 } from "lucide-react";
+import { Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
 
 const ViewerControls = ({
   cameraMode,
@@ -8,152 +8,130 @@ const ViewerControls = ({
   setVerticalExaggeration,
   onResetView,
 }) => {
-  const handleFullscreen = () => {
-    // Find the nearest parent that contains the 3D canvas.
-    // This allows fullscreen without changing the parent component.
-    const button = document.activeElement;
+  const handleFullscreen = async (event) => {
+    const viewer = event.currentTarget.closest("[data-terrain-viewer]");
 
-    let target = button;
+    if (!viewer) return;
 
-    while (target && target.parentElement) {
-      if (target.querySelector("canvas")) {
-        break;
+    try {
+      if (!document.fullscreenElement) {
+        await viewer.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
       }
-      target = target.parentElement;
-    }
-
-    if (!target || !target.querySelector("canvas")) {
-      target = document.querySelector("canvas")?.parentElement;
-    }
-
-    if (!target) return;
-
-    if (!document.fullscreenElement) {
-      target.requestFullscreen?.();
-    } else {
-      document.exitFullscreen?.();
+    } catch (error) {
+      console.error("Unable to toggle terrain fullscreen:", error);
     }
   };
 
   return (
-    <div className="absolute top-4 left-4 z-50 flex flex-col gap-3">
-      {/* Camera Modes */}
-      <div className="flex items-center gap-1 rounded-xl bg-white/95 p-1 shadow-lg backdrop-blur-md">
-        {[
-          { id: "orbit", label: "Orbit" },
-          { id: "flythrough", label: "Flythrough" },
-          { id: "top", label: "Top" },
-        ].map((mode) => (
-          <button
-            key={mode.id}
-            onClick={() => setCameraMode(mode.id)}
-            className={`
-              rounded-lg px-3 py-2 text-sm font-medium transition-all
-              ${
-                cameraMode === mode.id
-                  ? "bg-black text-white shadow"
-                  : "text-gray-700 hover:bg-gray-100"
+    <div className="pointer-events-none absolute inset-0 z-20">
+      {/* Primary viewer controls */}
+      <div className="pointer-events-auto absolute left-4 top-4 flex flex-col gap-2">
+        <div className="flex w-fit items-center gap-1 rounded-xl border border-white/70 bg-white/95 p-1 shadow-lg backdrop-blur-md">
+          {["orbit", "flythrough", "top"].map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setCameraMode(mode)}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                cameraMode === mode
+                  ? "bg-gray-950 text-white shadow-sm"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-950"
+              }`}
+            >
+              {mode === "flythrough" ? "Flythrough" : mode === "orbit" ? "Orbit" : "Top"}
+            </button>
+          ))}
+        </div>
+
+        <div className="w-60 rounded-xl border border-white/70 bg-white/95 p-3 shadow-lg backdrop-blur-md">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-700">
+              Height Exaggeration
+            </span>
+            <span className="text-xs font-bold text-gray-950">
+              {verticalExaggeration.toFixed(1)}x
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Decrease height exaggeration"
+              onClick={() =>
+                setVerticalExaggeration((value) =>
+                  Math.max(0.5, Number((value - 0.1).toFixed(1)))
+                )
               }
-            `}
-          >
-            {mode.label}
-          </button>
-        ))}
-      </div>
+              className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+            >
+              <Minus size={14} />
+            </button>
 
-      {/* Vertical Exaggeration */}
-      <div className="w-56 rounded-xl bg-white/95 p-4 shadow-lg backdrop-blur-md">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-700">
-            Height Exaggeration
-          </span>
+            <input
+              type="range"
+              min="0.5"
+              max="5"
+              step="0.1"
+              value={verticalExaggeration}
+              onChange={(event) =>
+                setVerticalExaggeration(Number(event.target.value))
+              }
+              aria-label="Height exaggeration"
+              className="w-full cursor-pointer accent-gray-950"
+            />
 
-          <span className="text-xs font-bold text-gray-900">
-            {verticalExaggeration.toFixed(1)}x
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Minus size={14} className="text-gray-500" />
-
-          <input
-            type="range"
-            min="0.5"
-            max="5"
-            step="0.1"
-            value={verticalExaggeration}
-            onChange={(e) => setVerticalExaggeration(Number(e.target.value))}
-            className="w-full cursor-pointer accent-black"
-          />
-
-          <Plus size={14} className="text-gray-500" />
+            <button
+              type="button"
+              aria-label="Increase height exaggeration"
+              onClick={() =>
+                setVerticalExaggeration((value) =>
+                  Math.min(5, Number((value + 0.1).toFixed(1))),
+                )
+              }
+              className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Bottom Controls */}
-      <div className="flex gap-2">
-        {/* Reset */}
+      {/* Viewer actions */}
+      <div className="pointer-events-auto absolute bottom-4 right-4 flex items-center gap-2">
         <button
+          type="button"
           onClick={onResetView}
-          title="Reset View"
-          className="
-            flex items-center gap-2 rounded-xl
-            bg-white/95 px-3 py-2
-            text-sm font-medium text-gray-800
-            shadow-lg backdrop-blur-md
-            transition hover:bg-white
-          "
+          className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/95 px-3 py-2 text-sm font-semibold text-gray-800 shadow-lg backdrop-blur-md transition hover:bg-white"
         >
           <RotateCcw size={16} />
           Reset
         </button>
 
-        {/* Fullscreen */}
         <button
+          type="button"
           onClick={handleFullscreen}
           title="Fullscreen"
-          className="
-            flex items-center justify-center
-            rounded-xl bg-white/95 p-2
-            text-gray-800 shadow-lg
-            backdrop-blur-md
-            transition hover:bg-white
-          "
+          aria-label="Toggle fullscreen"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/70 bg-white/95 text-gray-800 shadow-lg backdrop-blur-md transition hover:bg-white"
         >
-          <Maximize2 size={18} />
+          <Maximize2 size={17} />
         </button>
       </div>
 
-      {/* Flythrough Help */}
+      {/* Flythrough help */}
       {cameraMode === "flythrough" && (
-        <div
-          className="
-            max-w-xs rounded-xl
-            bg-black/75 px-4 py-3
-            text-xs leading-5 text-white
-            shadow-xl backdrop-blur-md
-          "
-        >
-          <div className="mb-1 font-semibold text-white">
-            Street View Controls
-          </div>
-
-          <div className="text-white/80">
-            <b>W / ↑</b> Forward
-            <br />
-            <b>S / ↓</b> Backward
-            <br />
-            <b>A / ←</b> Left
-            <br />
-            <b>D / →</b> Right
+        <div className="pointer-events-none absolute bottom-4 left-4 max-w-xs rounded-xl border border-white/10 bg-gray-950/80 px-4 py-3 text-xs leading-5 text-white shadow-xl backdrop-blur-md">
+          <div className="mb-1 font-semibold">Flythrough</div>
+          <div className="text-white/75">
+            <b>WASD / Arrow keys</b> Move
             <br />
             <b>Q / E</b> Down / Up
             <br />
-            <b>Shift</b> Fast Movement
+            <b>Shift</b> Fast movement
             <br />
-            <b>Mouse Drag</b> Look Around
-            <br />
-            <b>Scroll</b> Move Forward / Back
+            <b>Drag</b> Look around
           </div>
         </div>
       )}

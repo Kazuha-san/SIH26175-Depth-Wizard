@@ -10,11 +10,13 @@ const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, onError }) => {
   const [texture, setTexture] = useState(null);
 
   useEffect(() => {
-    let disposed = false;
-    let nextGeometry = null;
+    let cancelled = false;
+    let createdGeometry = null;
 
     try {
-      if (!resultData) throw new Error("Terrain result data is missing.");
+      if (!resultData) {
+        throw new Error("Terrain result data is missing.");
+      }
 
       const heightData = getHeightData(
         resultData.heightmap_png_b64,
@@ -22,75 +24,96 @@ const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, onError }) => {
         resultData.height_max,
       );
 
-      nextGeometry = createTerrainGeometry({
+      createdGeometry = createTerrainGeometry({
         ...heightData,
         verticalExaggeration,
       });
 
-      if (disposed) {
-        nextGeometry.dispose();
+      if (cancelled) {
+        createdGeometry.dispose();
         return undefined;
       }
 
-      setGeometry((previous) => {
-        previous?.dispose();
-        return nextGeometry;
+      setGeometry((previousGeometry) => {
+        previousGeometry?.dispose();
+        return createdGeometry;
       });
     } catch (error) {
-      console.error("Terrain generation error:", error);
-      if (!disposed) {
-        setGeometry((previous) => {
-          previous?.dispose();
+      console.error("Terrain geometry generation failed:", error);
+
+      if (!cancelled) {
+        setGeometry((previousGeometry) => {
+          previousGeometry?.dispose();
           return null;
         });
-        onError?.(error instanceof Error ? error.message : "Unable to generate terrain.");
+        onError?.(
+          error instanceof Error
+            ? error.message
+            : "Unable to generate the terrain geometry.",
+        );
       }
     }
 
     return () => {
-      disposed = true;
+      cancelled = true;
     };
   }, [resultData, verticalExaggeration, onError]);
 
   useEffect(() => {
-    let disposed = false;
-    let nextTexture = null;
+    let cancelled = false;
+    let createdTexture = null;
 
-    setTexture((previous) => {
-      previous?.dispose();
+    setTexture((previousTexture) => {
+      previousTexture?.dispose();
       return null;
     });
 
-    if (!resultData?.texture_png_b64) return undefined;
+    if (!resultData?.texture_png_b64) {
+      return undefined;
+    }
 
     loadTextureFromBase64(resultData.texture_png_b64)
       .then((loadedTexture) => {
-        if (disposed) {
+        if (cancelled) {
           loadedTexture.dispose();
           return;
         }
 
-        nextTexture = loadedTexture;
+        createdTexture = loadedTexture;
         setTexture(loadedTexture);
       })
       .catch((error) => {
-        if (!disposed) {
-          console.warn("Terrain texture could not be loaded:", error);
+        if (!cancelled) {
+          console.error("Terrain texture loading failed:", error);
+          onError?.(
+            error instanceof Error
+              ? `Terrain texture could not be loaded: ${error.message}`
+              : "Terrain texture could not be loaded.",
+          );
         }
       });
 
     return () => {
-      disposed = true;
-      nextTexture?.dispose();
+      cancelled = true;
+      createdTexture?.dispose();
     };
-  }, [resultData]);
+  }, [resultData, onError]);
 
-  useEffect(() => () => {
-    geometry?.dispose();
-    texture?.dispose();
-  }, [geometry, texture]);
+  useEffect(() => {
+    return () => {
+      geometry?.dispose();
+    };
+  }, [geometry]);
 
-  if (!geometry) return null;
+  useEffect(() => {
+    return () => {
+      texture?.dispose();
+    };
+  }, [texture]);
+
+  if (!geometry) {
+    return null;
+  }
 
   return (
     <mesh
@@ -100,9 +123,9 @@ const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, onError }) => {
       receiveShadow
     >
       <meshStandardMaterial
-        map={texture}
+        map={texture || undefined}
         color={texture ? "#ffffff" : "#8fa56b"}
-        roughness={0.95}
+        roughness={0.92}
         metalness={0}
         side={THREE.DoubleSide}
       />

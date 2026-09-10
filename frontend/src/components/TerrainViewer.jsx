@@ -1,4 +1,4 @@
-import React, { forwardRef, useState } from "react";
+import React, { forwardRef, useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 
 import TerrainMesh from "./terrain/TerrainMesh";
@@ -7,6 +7,10 @@ import TerrainCamera from "./terrain/TerrainCamera";
 const TerrainViewer = forwardRef(
   ({ resultData, verticalExaggeration = 0.5, cameraMode = "orbit", resetSignal = 0 }, ref) => {
     const [error, setError] = useState(null);
+
+    useEffect(() => {
+      setError(null);
+    }, [resultData]);
 
     return (
       <div className="relative h-full min-h-[600px] w-full overflow-hidden bg-slate-950">
@@ -19,12 +23,12 @@ const TerrainViewer = forwardRef(
           <color attach="background" args={["#dbe7ee"]} />
           <fog attach="fog" args={["#dbe7ee", 25, 70]} />
 
-          <ambientLight intensity={1.4} />
-          <hemisphereLight intensity={1.2} groundColor="#6b765c" />
+          <ambientLight intensity={0.55} />
+          <hemisphereLight intensity={0.45} groundColor="#5f6b58" />
           <directionalLight
             castShadow
             position={[12, 18, 10]}
-            intensity={2.2}
+            intensity={1.25}
             shadow-mapSize={[2048, 2048]}
           />
 

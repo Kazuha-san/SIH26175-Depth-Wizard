@@ -6,7 +6,7 @@ import { downloadJsonFile } from "../utils/downloadUtils";
 
 const ResultsView = ({ selectedFile, resultData }) => {
   const [cameraMode, setCameraMode] = useState("orbit");
-  const [verticalExaggeration, setVerticalExaggeration] = useState(0.5);
+  const [verticalExaggeration, setVerticalExaggeration] = useState(1);
   const [resetSignal, setResetSignal] = useState(0);
 
   const cameraControllerRef = useRef(null);
@@ -90,7 +90,10 @@ const ResultsView = ({ selectedFile, resultData }) => {
       <div className="mx-auto max-w-[1600px] px-6 py-6">
         <div className="grid min-h-[calc(100vh-180px)] grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
           {/* Terrain Viewer */}
-          <div className="relative min-h-[600px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div
+            data-terrain-viewer
+            className="relative h-[calc(100vh-180px)] min-h-[620px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm fullscreen:h-screen fullscreen:min-h-0 fullscreen:rounded-none fullscreen:border-0"
+          >
             <TerrainViewer
               resultData={resultData}
               verticalExaggeration={verticalExaggeration}
@@ -99,8 +102,16 @@ const ResultsView = ({ selectedFile, resultData }) => {
               ref={cameraControllerRef}
             />
 
+            <ViewerControls
+              cameraMode={cameraMode}
+              setCameraMode={setCameraMode}
+              verticalExaggeration={verticalExaggeration}
+              setVerticalExaggeration={setVerticalExaggeration}
+              onResetView={handleReset}
+            />
+
             {/* Viewer Status */}
-            <div className="pointer-events-none absolute left-4 top-4 rounded-lg border border-white/50 bg-white/90 px-3 py-2 shadow-sm backdrop-blur">
+            <div className="pointer-events-none absolute right-4 top-4 rounded-lg border border-white/50 bg-white/90 px-3 py-2 shadow-sm backdrop-blur">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-green-500" />
 
@@ -111,7 +122,7 @@ const ResultsView = ({ selectedFile, resultData }) => {
             </div>
 
             {/* Input Type */}
-            <div className="pointer-events-none absolute bottom-4 left-4 rounded-lg border border-white/50 bg-white/90 px-3 py-2 shadow-sm backdrop-blur">
+            <div className="pointer-events-none absolute right-4 top-20 rounded-lg border border-white/50 bg-white/90 px-3 py-2 shadow-sm backdrop-blur">
               <p className="text-xs text-gray-500">Input Type</p>
 
               <p className="mt-0.5 text-sm font-medium capitalize text-gray-800">
@@ -125,15 +136,6 @@ const ResultsView = ({ selectedFile, resultData }) => {
 
           {/* Controls / Information */}
           <div className="flex flex-col gap-6">
-            <ViewerControls
-              cameraMode={cameraMode}
-              setCameraMode={setCameraMode}
-              verticalExaggeration={verticalExaggeration}
-              setVerticalExaggeration={setVerticalExaggeration}
-              onResetView={handleReset}
-              ref={cameraControllerRef}
-            />
-
             {/* Terrain Statistics */}
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-gray-900">
