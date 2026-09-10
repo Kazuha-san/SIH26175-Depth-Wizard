@@ -10,6 +10,15 @@ venv/
 env/
 *.egg-info/
 .pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# --- Test artifacts / local validation only ---
+TEST_REPORT.md
+backend/e2e_api_results.json
+backend/test_images/
+backend/tests/
 
 # Model checkpoints / weights (large files, don't commit)
 backend/checkpoints/
