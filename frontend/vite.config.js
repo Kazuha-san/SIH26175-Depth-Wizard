@@ -1,9 +1,8 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 
-// Local-only dev server config. No deployment build target needed --
-// we run `npm run dev` and demo straight from localhost:5173.
+// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
-  server: { port: 5173 }
-})
+  plugins: [react(), tailwindcss()],
+});
