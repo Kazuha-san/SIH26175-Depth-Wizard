@@ -85,6 +85,18 @@ def flatten_planar_classes(dsm: np.ndarray, landcover_mask: np.ndarray,
             continue
 
         labeled, n_blobs = ndimage.label(class_mask)
+        
+        # Debug: count and size of connected components
+        blob_sizes = []
+        for blob_id in range(1, n_blobs + 1):
+            blob_mask = labeled == blob_id
+            blob_sizes.append(blob_mask.sum())
+        
+        print(f"[flatten_planar_classes] class_id={class_id}, n_blobs={n_blobs}, total_pixels={class_mask.sum()}")
+        if blob_sizes:
+            sorted_sizes = sorted(blob_sizes, reverse=True)
+            print(f"[flatten_planar_classes] top 3 blob pixel counts: {sorted_sizes[:3]}")
+        
         for blob_id in range(1, n_blobs + 1):
             blob_mask = labeled == blob_id
             n_pixels = int(blob_mask.sum())
@@ -109,6 +121,85 @@ def flatten_planar_classes(dsm: np.ndarray, landcover_mask: np.ndarray,
     return result
 
 
+def suppress_tree_noise(dsm: np.ndarray, landcover_mask: np.ndarray,
+                         tree_class_id: int, feather_px: int = 3,
+                         max_nearest_neighbor_distance_px: float = 40.0) -> np.ndarray:
+    """
+    Removes tree-canopy pixels from the height map and replaces them with
+    an inferred ground height, then lightly blurs just the filled region
+    so the seam isn't a hard edge.
+
+    Rationale: tree canopy is high-frequency, high-variance, and the depth
+    model's per-pixel noise is worst exactly there (individual branches/
+    gaps), which is why canopy is deliberately excluded from
+    flatten_planar_classes' plane-fit (a plane fit would misrepresent it,
+    per that function's docstring). Rather than trying to represent
+    canopy height at all, this treats trees as "ignore and infer the
+    ground underneath" -- for a demo prioritizing clean terrain/building
+    shape over tree realism, that's the right tradeoff.
+
+    FIX: originally used pure nearest-neighbor inpainting for every tree
+    pixel, which silently broke for a LARGE contiguous canopy blob -- a
+    tree pixel deep in the middle of a big forest region could have its
+    "nearest non-tree pixel" be far away near the image edge, itself an
+    elevated/noisy point rather than true ground level, so the whole
+    canopy inherited an arbitrary distant value instead of a sensible
+    baseline (confirmed: a scene that was almost entirely tree canopy
+    only dropped from max=1.00 to max=0.92 after this ran -- barely
+    touched, because there was no genuinely nearby low ground to pull
+    from). Now: any tree pixel farther than
+    max_nearest_neighbor_distance_px from real non-tree ground falls
+    back to a robust GLOBAL baseline (a low percentile of all non-tree
+    heights in the scene) instead of an unreliable distant nearest
+    neighbor -- guarantees large canopy blobs settle near true ground
+    level regardless of shape/size, while small/isolated tree patches
+    near real ground still get the more locally-accurate nearest-neighbor
+    value.
+
+    feather_px: radius of a light box blur applied ONLY to the
+        (dilated) tree region after inpainting, to soften the seam
+        between real ground and inferred ground where they meet.
+    """
+    from scipy import ndimage
+
+    tree_mask = (landcover_mask == tree_class_id)
+    if not np.any(tree_mask):
+        return dsm
+
+    non_tree_mask = ~tree_mask
+    if not np.any(non_tree_mask):
+        return dsm  # entire scene is tree -- nothing to infer ground from at all
+
+    global_baseline = float(np.percentile(dsm[non_tree_mask], 15))
+
+    # Nearest-neighbor fill (good for small/isolated tree patches near real ground)
+    distances, indices = ndimage.distance_transform_edt(
+        tree_mask, return_distances=True, return_indices=True
+    )
+    filled = dsm.copy()
+    nn_values = dsm[tuple(idx[tree_mask] for idx in indices)]
+    filled[tree_mask] = nn_values
+
+    # Any tree pixel too far from real ground gets the global baseline
+    # instead of trusting a distant, unreliable nearest neighbor.
+    far_from_ground = tree_mask & (distances > max_nearest_neighbor_distance_px)
+    filled[far_from_ground] = global_baseline
+
+    print(f"[suppress_tree_noise] global_baseline={global_baseline:.4f}, "
+          f"{int(far_from_ground.sum())}/{int(tree_mask.sum())} tree px "
+          f"used global baseline (too far from real ground for nearest-neighbor)")
+
+    # Feather only near the old tree/non-tree boundary so we don't blur
+    # real building edges elsewhere in the image.
+    if feather_px > 0:
+        seam_zone = ndimage.binary_dilation(tree_mask, iterations=feather_px)
+        ksize = 2 * feather_px + 1
+        blurred = ndimage.uniform_filter(filled, size=ksize)
+        filled = np.where(seam_zone, blurred, filled)
+
+    return filled
+
+
 def smooth_dsm(dsm: np.ndarray, rgb_guide: np.ndarray) -> np.ndarray:
     """
     Edge-aware smoothing of the (optionally already plane-flattened) DSM,
@@ -128,17 +219,110 @@ def smooth_dsm(dsm: np.ndarray, rgb_guide: np.ndarray) -> np.ndarray:
 
 
 def clean_dsm_for_mesh(dsm: np.ndarray, rgb_guide: np.ndarray,
-                        landcover_mask: np.ndarray = None) -> np.ndarray:
+                        landcover_mask: np.ndarray = None,
+                        suppress_trees: bool = True) -> np.ndarray:
     """
     Convenience wrapper chaining the full Stage 3 cleanup:
-    plane-fit flattening (if a land-cover mask is available) -> edge-aware
-    smoothing. This is what pipeline.py / the API route should call before
-    handing the DSM to generate_mesh() or package_result_for_frontend().
+    plane-fit flattening -> tree-noise suppression (both only if a
+    land-cover mask is available) -> edge-aware smoothing. This is what
+    pipeline.py / the API route should call before handing the DSM to
+    generate_mesh() or package_result_for_frontend().
+
+    Order matters: flatten buildings first (uses raw heights for the
+    plane fit), THEN suppress trees (inpaints from whatever's
+    surrounding them, including now-flattened buildings), THEN the
+    final edge-aware smoothing pass over everything.
     """
+    from app import config
+
+    print(f"[stage3_mesh_prep] clean_dsm_for_mesh called - dsm.shape={dsm.shape}, dsm.min={dsm.min():.4f}, dsm.max={dsm.max():.4f}, dsm.std={dsm.std():.4f}")
+    print(f"[stage3_mesh_prep] config.LANDCOVER_CLASS_IDS={config.LANDCOVER_CLASS_IDS}")
+    print(f"[stage3_mesh_prep] config.SUPPRESS_TREE_HEIGHT={config.SUPPRESS_TREE_HEIGHT}")
+    print(f"[stage3_mesh_prep] config.TREE_LANDCOVER_CLASS={config.TREE_LANDCOVER_CLASS}")
+    print(f"[stage3_mesh_prep] landcover_mask is {'None' if landcover_mask is None else f'present, shape={landcover_mask.shape}'}")
+    
     cleaned = dsm
     if landcover_mask is not None:
+        print(f"[stage3_mesh_prep] BEFORE flatten_planar_classes: dsm.min={cleaned.min():.4f}, dsm.max={cleaned.max():.4f}, dsm.std={cleaned.std():.4f}")
         cleaned = flatten_planar_classes(cleaned, landcover_mask)
-    return smooth_dsm(cleaned, rgb_guide)
+        print(f"[stage3_mesh_prep] AFTER flatten_planar_classes: dsm.min={cleaned.min():.4f}, dsm.max={cleaned.max():.4f}, dsm.std={cleaned.std():.4f}")
+        if suppress_trees and config.SUPPRESS_TREE_HEIGHT:
+            tree_class_id = config.LANDCOVER_CLASS_IDS.get(config.TREE_LANDCOVER_CLASS)
+            print(f"[stage3_mesh_prep] suppress_tree_noise: tree_class_id={tree_class_id}, landcover_mask unique values={np.unique(landcover_mask)}")
+            if tree_class_id is not None:
+                print(f"[stage3_mesh_prep] BEFORE suppress_tree_noise: dsm.min={cleaned.min():.4f}, dsm.max={cleaned.max():.4f}, dsm.std={cleaned.std():.4f}")
+                cleaned = suppress_tree_noise(cleaned, landcover_mask, tree_class_id)
+                print(f"[stage3_mesh_prep] AFTER suppress_tree_noise: dsm.min={cleaned.min():.4f}, dsm.max={cleaned.max():.4f}, dsm.std={cleaned.std():.4f}")
+    smoothed = smooth_dsm(cleaned, rgb_guide)
+
+    # BUG FIX: smooth_dsm's guided filter (radius=4) was re-blurring the
+    # sharp plane-fit edges flatten_planar_classes() just created -- the
+    # docstring above even says "edges flatten_planar_classes() just
+    # sharpened" but the code never actually protected them from this
+    # pass, so every flattened building got melted right back into a
+    # sloped blob. Composite: keep the exact flattened plane value on
+    # building pixels (they don't need denoising, they're already a
+    # deliberate flat plane, not raw model output), take the smoothed
+    # value everywhere else (trees/ground/roads genuinely need the
+    # noise reduction).
+    if landcover_mask is not None:
+        planar_ids = [config.LANDCOVER_CLASS_IDS[name] for name in config.PLANAR_LANDCOVER_CLASSES]
+        planar_pixel_mask = np.isin(landcover_mask, planar_ids)
+        result = np.where(planar_pixel_mask, cleaned, smoothed)
+        print(f"[stage3_mesh_prep] Protected {int(planar_pixel_mask.sum())} planar (building) "
+              f"pixels from post-flatten smoothing")
+    else:
+        result = smoothed
+
+    print(f"[stage3_mesh_prep] AFTER smooth_dsm (with planar protection): "
+          f"dsm.min={result.min():.4f}, dsm.max={result.max():.4f}, dsm.std={result.std():.4f}")
+
+    # Global outlier clamp -- catches raw depth hallucination (a tall
+    # dome/ridge in ground/vegetation terrain that flatten/suppress don't
+    # touch, since they only target building/tree pixels specifically).
+    # Only clips NON-building pixels, and percentile bounds are computed
+    # from non-building pixels too, so a legitimate flattened building
+    # roof at the high end of the range can't get clipped by its own fix.
+    if landcover_mask is not None:
+        planar_ids = [config.LANDCOVER_CLASS_IDS[name] for name in config.PLANAR_LANDCOVER_CLASSES]
+        planar_pixel_mask = np.isin(landcover_mask, planar_ids)
+
+        # FIX: percentile bounds used to be computed from ALL non-building
+        # pixels, including tree canopy -- if a scene is mostly tree cover
+        # and that canopy is hallucinating elevated height (confirmed: the
+        # nearest-neighbor tree fix barely engaged, 0/24489 px in one real
+        # run, meaning neighboring non-tree pixels are ALSO elevated), the
+        # 97th percentile is computed from a mostly-contaminated
+        # population and doesn't clip anything meaningful. Reference
+        # bounds now come from ONLY ground+road pixels specifically --
+        # the flattest, most reliable classes, least likely to hallucinate
+        # -- so the clamp has a trustworthy baseline regardless of how
+        # much of the image is tree-covered.
+        reference_ids = [
+            config.LANDCOVER_CLASS_IDS[name]
+            for name in ("ground", "road")
+            if name in config.LANDCOVER_CLASS_IDS
+        ]
+        reference_mask = np.isin(landcover_mask, reference_ids)
+        min_reference_pixels = 200
+        if reference_mask.sum() >= min_reference_pixels:
+            reference_values = result[reference_mask]
+            reference_source = "ground+road"
+        else:
+            reference_values = result[~planar_pixel_mask]
+            reference_source = "all non-building (ground+road too sparse in this scene)"
+
+        if reference_values.size > 0:
+            lo_pct, hi_pct = config.DSM_OUTLIER_CLAMP_PERCENTILES
+            lo, hi = np.percentile(reference_values, [lo_pct, hi_pct])
+            before_max = result.max()
+            clamped_non_planar = np.clip(result, lo, hi)
+            result = np.where(planar_pixel_mask, result, clamped_non_planar)
+            print(f"[stage3_mesh_prep] Outlier clamp (reference: {reference_source}, "
+                  f"n={reference_values.size}): [{lo:.4f}, {hi:.4f}] "
+                  f"(was max={before_max:.4f}, now max={result.max():.4f})")
+
+    return result
 
 
 def _downsample_to_max_resolution(array: np.ndarray, max_resolution: int) -> np.ndarray:
@@ -257,11 +441,20 @@ def package_result_for_frontend(dsm: np.ndarray, confidence_map: np.ndarray,
     """
     Packages the cleaned DSM + confidence map + RGB texture into a
     lightweight, JSON-serializable payload for the /result API response.
-    The Three.js frontend builds its own mesh client-side from this data
-    (frontend/src/components/viewport/meshBuilder.js) via GPU vertex
-    displacement, which is why we ship raw height data here rather than
-    a pre-built mesh -- the live viewer needs the full-resolution
-    heightmap for smooth navigation, not a pre-triangulated asset.
+    The Three.js frontend builds its own mesh client-side from this data.
+
+    IMPORTANT: downsamples dsm/confidence/rgb to config.MESH_MAX_RESOLUTION
+    before encoding -- generate_mesh()/export_mesh_glb() already did this
+    for the downloadable .glb, but this function used to send the FULL,
+    un-downsampled resolution to the live browser view. On a fixed-size
+    display plane (TERRAIN_SIZE in the frontend), that meant per-pixel
+    noise in the raw depth output produced near-vertical spikes -- every
+    pixel became its own mesh vertex on a plane far too small for that
+    vertex density, so noise that would be invisible at a sane resolution
+    read as dramatic fake "mountains." Downsampling here also acts as
+    extra noise averaging on top of smooth_dsm()'s guided filter, which
+    matters most for the relative-only (no SRTM/no calibration) fallback
+    path, where the raw Stage 1 output is noisiest.
 
     Height data is shipped as 16-bit PNG (not 8-bit) to preserve enough
     vertical precision for tall scenes -- an 8-bit heightmap would band
@@ -275,28 +468,44 @@ def package_result_for_frontend(dsm: np.ndarray, confidence_map: np.ndarray,
             uncertainty pass was run), 0=low confidence, 255=high
         texture_png_b64: base64 RGB PNG of the original image, for UV texturing
         height_min / height_max: float, for decoding heightmap_png_b64
+        height_units: "meters" if this DSM went through real SRTM
+            calibration, "relative" otherwise -- the frontend must NOT
+            label relative values with "m", they're not meters
         metadata: passed through as given (GSD info, calibration method, etc.)
     """
-    valid = np.isfinite(dsm)
-    height_min = float(np.min(dsm[valid])) if np.any(valid) else 0.0
-    height_max = float(np.max(dsm[valid])) if np.any(valid) else 1.0
+    from app import config
+
+    dsm_ds = _downsample_to_max_resolution(dsm, config.MESH_MAX_RESOLUTION)
+    rgb_ds = _downsample_to_max_resolution(rgb_image, config.MESH_MAX_RESOLUTION)
+    confidence_ds = (
+        _downsample_to_max_resolution(confidence_map, config.MESH_MAX_RESOLUTION)
+        if confidence_map is not None else None
+    )
+
+    valid = np.isfinite(dsm_ds)
+    height_min = float(np.min(dsm_ds[valid])) if np.any(valid) else 0.0
+    height_max = float(np.max(dsm_ds[valid])) if np.any(valid) else 1.0
     if height_max <= height_min:
         height_max = height_min + 1.0
 
-    dsm_filled = np.nan_to_num(dsm, nan=height_min)
+    dsm_filled = np.nan_to_num(dsm_ds, nan=height_min)
     normalized = np.clip((dsm_filled - height_min) / (height_max - height_min), 0, 1)
     heightmap_16bit = (normalized * 65535).astype(np.uint16)
 
     confidence_png_b64 = None
-    if confidence_map is not None:
-        confidence_8bit = np.clip(confidence_map * 255, 0, 255).astype(np.uint8)
+    if confidence_ds is not None:
+        confidence_8bit = np.clip(confidence_ds * 255, 0, 255).astype(np.uint8)
         confidence_png_b64 = _encode_png_base64(confidence_8bit)
+
+    calibration_method = metadata.get("calibration_method", "none_relative_only")
+    height_units = "meters" if calibration_method != "none_relative_only" else "relative"
 
     return {
         "heightmap_png_b64": _encode_png_base64(heightmap_16bit),
         "confidence_png_b64": confidence_png_b64,
-        "texture_png_b64": _encode_png_base64(rgb_image.astype(np.uint8)),
+        "texture_png_b64": _encode_png_base64(rgb_ds.astype(np.uint8)),
         "height_min": height_min,
         "height_max": height_max,
+        "height_units": height_units,
         "metadata": metadata,
     }

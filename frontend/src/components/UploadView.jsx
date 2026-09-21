@@ -1,13 +1,42 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { Image as ImageIcon, Layers } from "lucide-react";
+
+import ExampleGallery, { EXAMPLE_DRAG_MIME, loadExampleAsFile } from "./ExampleGallery";
+import exampleImages from "../data/exampleImages";
 
 const UploadView = ({
   selectedFile,
   onFileSelect,
   onRunPipeline,
   onRemoveFile,
+  errorMessage,
+  isUploading,
 }) => {
   const fileInputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [galleryError, setGalleryError] = useState(null);
+
+  // Object-URL preview -- only for formats the browser can actually decode
+  // (PNG/JPG). GeoTIFF has no native <img> support, so we show a labeled
+  // icon instead of a broken image rather than pretending to preview it.
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreviewUrl(null);
+      return undefined;
+    }
+
+    const extension = selectedFile.name.split(".").pop().toLowerCase();
+    if (extension === "tif" || extension === "tiff") {
+      setPreviewUrl(null);
+      return undefined;
+    }
+
+    const url = URL.createObjectURL(selectedFile);
+    setPreviewUrl(url);
+
+    return () => URL.revokeObjectURL(url);
+  }, [selectedFile]);
 
   const detectFileType = (file) => {
     const extension = file.name.split(".").pop().toLowerCase();
@@ -37,8 +66,32 @@ const UploadView = ({
     event.preventDefault();
     setIsDragging(false);
 
+    // A gallery item being dragged in carries our custom MIME type instead
+    // of real files -- check that first, otherwise fall through to a
+    // normal OS file drop.
+    const exampleId = event.dataTransfer.getData(EXAMPLE_DRAG_MIME);
+    if (exampleId) {
+      const example = exampleImages.find((item) => item.id === exampleId);
+      if (example) {
+        handleSelectExample(example);
+      }
+      return;
+    }
+
     const file = event.dataTransfer.files[0];
     handleFile(file);
+  };
+
+  const handleSelectExample = async (example) => {
+    setGalleryError(null);
+    try {
+      const file = await loadExampleAsFile(example);
+      handleFile(file);
+    } catch (error) {
+      setGalleryError(
+        error instanceof Error ? error.message : "Could not load that example image.",
+      );
+    }
   };
 
   const handleBrowse = () => {
@@ -47,7 +100,7 @@ const UploadView = ({
 
   return (
     <section className="min-h-[calc(100vh-64px)] px-6 py-10">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         {/* Heading */}
         <div className="mb-8">
           <div className="mb-3 inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
@@ -64,6 +117,8 @@ const UploadView = ({
           </p>
         </div>
 
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          <div>
         {/* Upload Card */}
         <div
           onDragOver={(event) => {
@@ -106,13 +161,30 @@ const UploadView = ({
           />
         </div>
 
+        {/* Error */}
+        {errorMessage && (
+          <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
+
         {/* Selected File */}
         {selectedFile && (
           <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-sm font-bold text-gray-600">
-                  IMG
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gray-100">
+                  {previewUrl ? (
+                    <img
+                      src={previewUrl}
+                      alt="Selected upload preview"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : detectFileType(selectedFile) === "GeoTIFF" ? (
+                    <Layers className="text-gray-400" size={22} />
+                  ) : (
+                    <ImageIcon className="text-gray-400" size={22} />
+                  )}
                 </div>
 
                 <div className="min-w-0">
@@ -169,11 +241,24 @@ const UploadView = ({
         <div className="mt-8 flex justify-end">
           <button
             onClick={onRunPipeline}
-            disabled={!selectedFile}
+            disabled={!selectedFile || isUploading}
             className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
           >
-            Run Pipeline →
+            {isUploading ? "Uploading…" : "Run Pipeline →"}
           </button>
+        </div>
+          </div>
+
+          {/* Sidebar -- preloaded example gallery */}
+          <div className="flex flex-col gap-4">
+            <ExampleGallery onSelectExample={handleSelectExample} disabled={isUploading} />
+
+            {galleryError && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                {galleryError}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </section>

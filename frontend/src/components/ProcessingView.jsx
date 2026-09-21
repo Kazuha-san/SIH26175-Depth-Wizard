@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 
-const ProcessingView = ({ onComplete }) => {
+import { processImage } from "../utils/api";
+
+const ProcessingView = ({ imageId, onComplete, onError }) => {
   const steps = [
     {
       title: "Elevation Extraction",
@@ -16,35 +18,51 @@ const ProcessingView = ({ onComplete }) => {
     },
   ];
 
+  // The backend runs Stage1->2->3 as a single request with no incremental
+  // progress events, so this stepper animates on a fixed cadence purely as
+  // a "something is happening" indicator -- it does NOT reflect real
+  // pipeline progress. The actual completion/failure is driven entirely by
+  // the /process request below; if it resolves before the animation
+  // reaches the last step, the animation is cut short by onComplete firing.
   const [currentStep, setCurrentStep] = useState(0);
 
   useEffect(() => {
-    let completionTimer;
-
     const interval = setInterval(() => {
-      setCurrentStep((previousStep) => {
-        if (previousStep < steps.length - 1) {
-          return previousStep + 1;
-        }
-
-        clearInterval(interval);
-
-        completionTimer = setTimeout(() => {
-          onComplete();
-        }, 800);
-
-        return previousStep;
-      });
+      setCurrentStep((previousStep) =>
+        previousStep < steps.length - 1 ? previousStep + 1 : previousStep,
+      );
     }, 1800);
 
-    return () => {
-      clearInterval(interval);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      if (completionTimer) {
-        clearTimeout(completionTimer);
-      }
+  useEffect(() => {
+    if (!imageId) {
+      onError?.("No image was uploaded -- please go back and select a file.");
+      return;
+    }
+
+    let cancelled = false;
+
+    processImage(imageId)
+      .then((result) => {
+        if (!cancelled) onComplete(result);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          onError?.(
+            error instanceof Error
+              ? error.message
+              : "Pipeline processing failed unexpectedly.",
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
     };
-  }, [onComplete]);
+  }, [imageId, onComplete, onError]);
 
   return (
     <section className="min-h-[calc(100vh-64px)] px-6 py-12">

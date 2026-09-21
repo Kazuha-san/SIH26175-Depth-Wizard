@@ -38,6 +38,8 @@ os.makedirs(MESH_EXPORT_DIR, exist_ok=True)
 _JOBS = {}  # image_id -> {"status", "input_type", "metadata", "result", "error"}
 
 _model = None
+_seg_model = None
+_seg_model_load_attempted = False
 
 
 def _get_model():
@@ -46,6 +48,35 @@ def _get_model():
     if _model is None:
         _model = stage1_depth.load_depth_model(config.DEPTH_MODEL_CHECKPOINT)
     return _model
+
+
+def _get_seg_model():
+    """
+    Lazy-loads the land-cover segmentation model once, reused across requests.
+    Returns None (not an error) if the checkpoint isn't present -- Innovation #1
+    is a real feature but not one the demo should hard-fail without; the
+    pipeline falls back to global affine calibration in that case.
+    """
+    global _seg_model, _seg_model_load_attempted
+    if _seg_model is None and not _seg_model_load_attempted:
+        _seg_model_load_attempted = True
+        if os.path.exists(config.LANDCOVER_MODEL_CHECKPOINT):
+            try:
+                from app.models import landcover_model
+                _seg_model = landcover_model.load_landcover_model(config.LANDCOVER_MODEL_CHECKPOINT)
+                print(f"[routes] Land-cover model loaded from {config.LANDCOVER_MODEL_CHECKPOINT}")
+            except Exception as exc:
+                print(
+                    f"[routes] Failed to load land-cover model from {config.LANDCOVER_MODEL_CHECKPOINT}: {exc}"
+                    f" -- per-class calibration will fall back to global affine fit."
+                )
+                _seg_model = None
+        else:
+            print(
+                f"[routes] No land-cover checkpoint at {config.LANDCOVER_MODEL_CHECKPOINT} -- "
+                f"per-class calibration will fall back to global affine fit."
+            )
+    return _seg_model
 
 
 @router.post("/upload")
@@ -138,6 +169,16 @@ async def run_pipeline(image_id: str, with_uncertainty: bool = True):
         rgb_for_mesh = pipeline_out.get("normalized_image", rgb_image)
         dsm = pipeline_out.get("calibrated_dsm", pipeline_out.get("normalized_rdsm"))
         landcover_mask = pipeline_out.get("landcover_mask")  # None unless caller supplied one
+        if landcover_mask is not None:
+            counts = np.bincount(landcover_mask.flatten(), minlength=len(config.LANDCOVER_CLASSES))
+            dist = {name: int(counts[i]) for i, name in enumerate(config.LANDCOVER_CLASSES) if counts[i] > 0}
+            print(f"[routes] landcover_mask class distribution (px): {dist}")
+            if len(dist) <= 1:
+                print(
+                    "[routes] WARNING: landcover_mask predicted only one class for this "
+                    "image -- building-flattening / tree-suppression will have no effect. "
+                    "Check the segmentation checkpoint (see landcover_model.load_landcover_model)."
+                )
         cleaned_dsm = stage3_mesh_prep.clean_dsm_for_mesh(dsm, rgb_for_mesh, landcover_mask)
 
         payload = stage3_mesh_prep.package_result_for_frontend(
@@ -151,6 +192,7 @@ async def run_pipeline(image_id: str, with_uncertainty: bool = True):
                 "gsd_info": pipeline_out.get("gsd_info"),
             },
         )
+        payload["input_type"] = job["input_type"]
 
         glb_path = os.path.join(MESH_EXPORT_DIR, f"{image_id}.glb")
         stage3_mesh_prep.export_mesh_glb(cleaned_dsm, rgb_for_mesh, glb_path)
@@ -170,14 +212,18 @@ async def run_pipeline(image_id: str, with_uncertainty: bool = True):
 def _run_georeferenced(rgb_image, model, srtm_reference, with_uncertainty):
     from app.pipeline import pipeline as pipeline_module
     return pipeline_module.run_stage1_to_stage2_georeferenced(
-        rgb_image, model, srtm_reference, with_uncertainty=with_uncertainty
+        rgb_image, model, srtm_reference,
+        landcover_model=_get_seg_model(),
+        with_uncertainty=with_uncertainty,
     )
 
 
 def _run_nongeoreferenced(rgb_image, model, with_uncertainty):
     from app.pipeline import pipeline as pipeline_module
     return pipeline_module.run_stage1_only_nongeoreferenced(
-        rgb_image, model, with_uncertainty=with_uncertainty
+        rgb_image, model, 
+        landcover_model=_get_seg_model(),
+        with_uncertainty=with_uncertainty
     )
 
 
@@ -192,3 +238,28 @@ async def get_result(image_id: str):
     if job["status"] != "done":
         return {"status": job["status"]}
     return job["result"]
+
+
+@router.get("/mesh/{image_id}")
+async def download_mesh(image_id: str):
+    """
+    Downloads the standalone .glb mesh for an already-processed image --
+    a real, portable glTF asset viewable in any glTF viewer, not just this
+    app's own Three.js viewer. Satisfies the PS's "standalone deployable"
+    requirement independent of the live frontend.
+    """
+    from fastapi.responses import FileResponse
+
+    job = _JOBS.get(image_id)
+    if job is None or job.get("status") != "done":
+        raise HTTPException(status_code=404, detail=f"No completed mesh for image_id: {image_id}")
+
+    glb_path = job["result"].get("mesh_glb_path")
+    if not glb_path or not os.path.exists(glb_path):
+        raise HTTPException(status_code=404, detail="Mesh file not found on disk.")
+
+    return FileResponse(
+        glb_path,
+        media_type="model/gltf-binary",
+        filename=f"depthwizard_{image_id}.glb",
+    )

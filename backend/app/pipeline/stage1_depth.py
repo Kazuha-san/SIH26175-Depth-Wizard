@@ -108,8 +108,23 @@ def normalize_gsd(image: np.ndarray, source_gsd_m: float = None,
     left = max(0, (w - crop_side_px) // 2)
     cropped = image[top:top + crop_side_px, left:left + crop_side_px]
 
-    # Resize the crop to the model's expected input size
-    pil_img = Image.fromarray(cropped).resize((model_input_size, model_input_size), Image.BILINEAR)
+    # Resize the crop to the model's expected input size. LANCZOS (not
+    # BILINEAR) -- sharper for both directions, and specifically matters
+    # when crop_side_px < model_input_size (a wide/zoomed-out source like
+    # Sentinel-2 means the GSD-matching crop is small, so this step is
+    # UPSCALING, not just resizing -- BILINEAR made that blur worse).
+    is_upscaling = crop_side_px < model_input_size
+    pil_img = Image.fromarray(cropped).resize((model_input_size, model_input_size), Image.LANCZOS)
+
+    if is_upscaling:
+        # Mild unsharp mask to recover perceived edge crispness after
+        # upscaling. This does NOT invent real detail (no super-resolution
+        # model, no training) -- it's a standard sharpening pass, applied
+        # only when upscaling since it would just add ringing artifacts on
+        # an already-correctly-sized or downsampled crop.
+        from PIL import ImageFilter
+        pil_img = pil_img.filter(ImageFilter.UnsharpMask(radius=1.5, percent=60, threshold=2))
+
     normalized = np.array(pil_img)
 
     info = {
@@ -118,6 +133,7 @@ def normalize_gsd(image: np.ndarray, source_gsd_m: float = None,
         "target_gsd_m": target_gsd_m,
         "crop_side_px": int(crop_side_px),
         "original_shape": (h, w),
+        "upscaled": is_upscaling,
     }
     return normalized, info
 

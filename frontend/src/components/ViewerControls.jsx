@@ -7,6 +7,9 @@ const ViewerControls = ({
   verticalExaggeration,
   setVerticalExaggeration,
   onResetView,
+  textureMode,
+  setTextureMode,
+  hasConfidence,
 }) => {
   const handleFullscreen = async (event) => {
     const viewer = event.currentTarget.closest("[data-terrain-viewer]");
@@ -96,6 +99,28 @@ const ViewerControls = ({
             </button>
           </div>
         </div>
+
+        {hasConfidence && (
+          <div className="flex w-fit items-center gap-1 rounded-xl border border-white/70 bg-white/95 p-1 shadow-lg backdrop-blur-md">
+            {[
+              { key: "rgb", label: "Imagery" },
+              { key: "confidence", label: "Confidence" },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTextureMode(key)}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                  textureMode === key
+                    ? "bg-gray-950 text-white shadow-sm"
+                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-950"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Viewer actions */}
@@ -119,6 +144,25 @@ const ViewerControls = ({
           <Maximize2 size={17} />
         </button>
       </div>
+
+      {/* Confidence legend (suppressed in flythrough mode -- same corner as the flythrough help panel) */}
+      {textureMode === "confidence" && cameraMode !== "flythrough" && (
+        <div className="pointer-events-none absolute bottom-4 left-4 max-w-xs rounded-xl border border-white/10 bg-gray-950/80 px-4 py-3 text-xs leading-5 text-white shadow-xl backdrop-blur-md">
+          <div className="mb-2 font-semibold">Elevation Confidence</div>
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#ef4444" }} />
+            <span className="text-white/75">Low confidence</span>
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#facc15" }} />
+            <span className="text-white/75">Medium</span>
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#22c55e" }} />
+            <span className="text-white/75">High confidence</span>
+          </div>
+        </div>
+      )}
 
       {/* Flythrough help */}
       {cameraMode === "flythrough" && (

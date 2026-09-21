@@ -7,7 +7,7 @@ import GroundGrid from "./terrain/GroundGrid";
 import { TERRAIN_SIZE } from "../utils/terrainUtils";
 
 const TerrainViewer = forwardRef(
-  ({ resultData, verticalExaggeration = 0.5, cameraMode = "orbit", resetSignal = 0 }, ref) => {
+  ({ resultData, verticalExaggeration = 0.5, cameraMode = "orbit", textureMode = "rgb", resetSignal = 0 }, ref) => {
     const [error, setError] = useState(null);
 
     useEffect(() => {
@@ -39,6 +39,7 @@ const TerrainViewer = forwardRef(
           <TerrainMesh
             resultData={resultData}
             verticalExaggeration={verticalExaggeration}
+            textureMode={textureMode}
             onError={setError}
           />
 

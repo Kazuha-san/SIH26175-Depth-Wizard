@@ -5,7 +5,7 @@ import UploadView from "./components/UploadView";
 import ProcessingView from "./components/ProcessingView";
 import ResultsView from "./components/ResultsView";
 
-import FixtureResponse from "./data/FixtureResponse.json";
+import { uploadImage } from "./utils/api";
 
 const App = () => {
   // ==========================================================
@@ -32,48 +32,81 @@ const App = () => {
   const [resultData, setResultData] = useState(null);
 
   // ==========================================================
+  // The uploaded image's backend id, set once /upload succeeds.
+  // ProcessingView uses this to kick off /process.
+  // ==========================================================
+
+  const [imageId, setImageId] = useState(null);
+
+  // ==========================================================
+  // Upload error (shown on the upload view if /upload itself fails,
+  // e.g. backend not running, unreadable file)
+  // ==========================================================
+
+  const [uploadError, setUploadError] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // ==========================================================
   // File Selection
   // ==========================================================
 
   const handleFileSelect = (file) => {
     if (!file) return;
 
+    setUploadError(null);
     setSelectedFile(file);
   };
 
   // ==========================================================
   // Run Pipeline
+  //
+  // Uploads the file to get an image_id, then hands off to
+  // ProcessingView, which runs the actual (slow) /process call.
   // ==========================================================
 
-  const handleRunPipeline = () => {
-    // No image = cannot process
+  const handleRunPipeline = async () => {
     if (!selectedFile) {
       return;
     }
 
-    setCurrentView("processing");
+    setUploadError(null);
+    setIsUploading(true);
+
+    try {
+      const { image_id } = await uploadImage(selectedFile);
+      setImageId(image_id);
+      setCurrentView("processing");
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : "Upload failed. Is the backend running?",
+      );
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   // ==========================================================
   // Processing Complete
   //
-  // CURRENTLY:
-  // We use FixtureResponse because backend isn't integrated yet.
-  //
-  // LATER:
-  // Replace FixtureResponse with backend response.
+  // ProcessingView calls this with the REAL backend result once
+  // /process/{image_id} resolves.
   // ==========================================================
 
-  const handleProcessingComplete = () => {
-    if (!selectedFile) {
-      return;
-    }
-
-    // Mock result for now
-    setResultData(FixtureResponse);
-
-    // Open Results
+  const handleProcessingComplete = (backendResult) => {
+    setResultData(backendResult);
     setCurrentView("results");
+  };
+
+  // ==========================================================
+  // Processing Failed
+  //
+  // Sends the user back to Upload with an error message rather than
+  // stranding them on a dead processing screen.
+  // ==========================================================
+
+  const handleProcessingError = (message) => {
+    setUploadError(message);
+    setCurrentView("upload");
   };
 
   // ==========================================================
@@ -87,6 +120,8 @@ const App = () => {
 
   const handleNewImage = () => {
     setSelectedFile(null);
+    setImageId(null);
+    setUploadError(null);
 
     // DO NOT DO:
     // setResultData(null);
@@ -100,6 +135,8 @@ const App = () => {
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
+    setImageId(null);
+    setUploadError(null);
   };
 
   // ==========================================================
@@ -154,6 +191,8 @@ const App = () => {
             onFileSelect={handleFileSelect}
             onRunPipeline={handleRunPipeline}
             onRemoveFile={handleRemoveFile}
+            errorMessage={uploadError}
+            isUploading={isUploading}
           />
         )}
 
@@ -162,7 +201,11 @@ const App = () => {
         ==================================================== */}
 
         {currentView === "processing" && (
-          <ProcessingView onComplete={handleProcessingComplete} />
+          <ProcessingView
+            imageId={imageId}
+            onComplete={handleProcessingComplete}
+            onError={handleProcessingError}
+          />
         )}
 
         {/* ====================================================

@@ -1,12 +1,16 @@
 import React, { useRef, useState } from "react";
+import { Download } from "lucide-react";
 
 import TerrainViewer from "./TerrainViewer";
 import ViewerControls from "./ViewerControls";
 import { downloadJsonFile } from "../utils/downloadUtils";
 
+const API_BASE = "http://localhost:8000";
+
 const ResultsView = ({ selectedFile, resultData }) => {
   const [cameraMode, setCameraMode] = useState("orbit");
   const [verticalExaggeration, setVerticalExaggeration] = useState(1);
+  const [textureMode, setTextureMode] = useState("rgb");
   const [resetSignal, setResetSignal] = useState(0);
 
   const cameraControllerRef = useRef(null);
@@ -53,6 +57,10 @@ const ResultsView = ({ selectedFile, resultData }) => {
     );
   };
 
+  const handleDownloadMesh = () => {
+    window.open(`${API_BASE}/mesh/${resultData.image_id}`, "_blank");
+  };
+
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#F6F7F9]">
       {/* Header */}
@@ -77,6 +85,15 @@ const ResultsView = ({ selectedFile, resultData }) => {
 
             <button
               type="button"
+              onClick={handleDownloadMesh}
+              className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 cursor-pointer"
+            >
+              <Download size={16} />
+              Download Mesh (.glb)
+            </button>
+
+            <button
+              type="button"
               onClick={handleExport}
               className="rounded-lg border border-gray-300 bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 cursor-pointer"
             >
@@ -98,6 +115,7 @@ const ResultsView = ({ selectedFile, resultData }) => {
               resultData={resultData}
               verticalExaggeration={verticalExaggeration}
               cameraMode={cameraMode}
+              textureMode={textureMode}
               resetSignal={resetSignal}
               ref={cameraControllerRef}
             />
@@ -108,6 +126,9 @@ const ResultsView = ({ selectedFile, resultData }) => {
               verticalExaggeration={verticalExaggeration}
               setVerticalExaggeration={setVerticalExaggeration}
               onResetView={handleReset}
+              textureMode={textureMode}
+              setTextureMode={setTextureMode}
+              hasConfidence={!!resultData.confidence_png_b64}
             />
 
             {/* Viewer Status */}
@@ -138,16 +159,31 @@ const ResultsView = ({ selectedFile, resultData }) => {
           <div className="flex flex-col gap-6">
             {/* Terrain Statistics */}
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-gray-900">
-                Terrain Statistics
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-900">
+                  Terrain Statistics
+                </h2>
+                {resultData.height_units === "relative" && (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                    Relative units
+                  </span>
+                )}
+              </div>
+
+              {resultData.height_units === "relative" && (
+                <p className="mt-1 text-xs leading-4 text-gray-500">
+                  No SRTM calibration for this result — values below are
+                  normalized (0–1), not real-world meters.
+                </p>
+              )}
 
               <div className="mt-4 space-y-3">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                   <span className="text-sm text-gray-500">Minimum Height</span>
 
                   <span className="text-sm font-semibold text-gray-900">
-                    {Number(resultData.height_min ?? 0).toFixed(2)} m
+                    {Number(resultData.height_min ?? 0).toFixed(2)}
+                    {resultData.height_units === "relative" ? "" : " m"}
                   </span>
                 </div>
 
@@ -155,7 +191,8 @@ const ResultsView = ({ selectedFile, resultData }) => {
                   <span className="text-sm text-gray-500">Maximum Height</span>
 
                   <span className="text-sm font-semibold text-gray-900">
-                    {Number(resultData.height_max ?? 0).toFixed(2)} m
+                    {Number(resultData.height_max ?? 0).toFixed(2)}
+                    {resultData.height_units === "relative" ? "" : " m"}
                   </span>
                 </div>
 
@@ -166,8 +203,8 @@ const ResultsView = ({ selectedFile, resultData }) => {
                     {(
                       Number(resultData.height_max ?? 0) -
                       Number(resultData.height_min ?? 0)
-                    ).toFixed(2)}{" "}
-                    m
+                    ).toFixed(2)}
+                    {resultData.height_units === "relative" ? "" : " m"}
                   </span>
                 </div>
               </div>

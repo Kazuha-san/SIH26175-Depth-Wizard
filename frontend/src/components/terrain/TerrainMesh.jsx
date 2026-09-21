@@ -3,9 +3,9 @@ import * as THREE from "three";
 
 import { getHeightData } from "../../utils/getHeightData";
 import { createTerrainGeometry } from "../../utils/terrainUtils";
-import { loadTextureFromBase64 } from "../../utils/textureUtils";
+import { loadTextureFromBase64, loadConfidenceTextureFromBase64 } from "../../utils/textureUtils";
 
-const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, onError }) => {
+const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, textureMode = "rgb", onError }) => {
   const [geometry, setGeometry] = useState(null);
   const [texture, setTexture] = useState(null);
 
@@ -68,11 +68,24 @@ const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, onError }) => {
       return null;
     });
 
-    if (!resultData?.texture_png_b64) {
+    const base64 = textureMode === "confidence"
+      ? resultData?.confidence_png_b64
+      : resultData?.texture_png_b64;
+
+    if (!base64) {
+      onError?.(
+        textureMode === "confidence"
+          ? "No confidence data available for this result (uncertainty pass wasn't run)."
+          : "No imagery texture was returned for this result.",
+      );
       return undefined;
     }
 
-    loadTextureFromBase64(resultData.texture_png_b64)
+    const loader = textureMode === "confidence"
+      ? loadConfidenceTextureFromBase64
+      : loadTextureFromBase64;
+
+    loader(base64)
       .then((loadedTexture) => {
         if (cancelled) {
           loadedTexture.dispose();
@@ -97,7 +110,7 @@ const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, onError }) => {
       cancelled = true;
       createdTexture?.dispose();
     };
-  }, [resultData, onError]);
+  }, [resultData, textureMode, onError]);
 
   useEffect(() => {
     return () => {

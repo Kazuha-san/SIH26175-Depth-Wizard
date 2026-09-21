@@ -77,7 +77,7 @@ def resize_for_model(image: np.ndarray, target_size: tuple) -> np.ndarray:
         top = (h - new_h) // 2
         cropped = image[top:top + new_h, :]
 
-    pil_img = Image.fromarray(cropped).resize((target_w, target_h), Image.BILINEAR)
+    pil_img = Image.fromarray(cropped).resize((target_w, target_h), Image.LANCZOS)
     return np.array(pil_img)
 
 

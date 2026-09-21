@@ -22,6 +22,7 @@ def run_stage1_to_stage2_georeferenced(
     model,
     srtm_reference: np.ndarray,
     landcover_mask: np.ndarray = None,
+    landcover_model=None,
     source_gsd_m: float = None,
     with_uncertainty: bool = False,
 ):
@@ -35,9 +36,15 @@ def run_stage1_to_stage2_georeferenced(
     for wiring tests before live SRTM fetch works, won't need resampling
     the same way a real fetched SRTM tile would).
 
-    If `landcover_mask` is provided, uses Innovation #1 (per-class
-    calibration). If not, falls back to a single global affine fit --
-    still correct, just without the innovation.
+    Land-cover mask for Innovation #1 (per-class calibration), in priority order:
+      1. `landcover_mask` passed in directly (e.g. GAMUS ground-truth mask for testing)
+      2. predicted from `landcover_model` if one is supplied (the real inference-time
+         path -- a real upload has no ground-truth mask, only RGB)
+      3. neither given -> falls back to a single global affine fit, still correct,
+         just without the innovation
+
+    Whichever mask is used is computed AFTER GSD-normalization so it's pixel-aligned
+    with the depth output and srtm_reference with no separate resize step to get wrong.
 
     Returns a dict with everything downstream stages / the API / debugging
     would want: the raw relative height, the calibrated absolute DSM, the
@@ -55,6 +62,13 @@ def run_stage1_to_stage2_georeferenced(
             f"(see srtm_utils.resample_to_match), or pass a stand-in "
             f"reference that's already the right shape."
         )
+
+    if landcover_mask is None and landcover_model is not None:
+        from app.models import landcover_model as landcover_model_module
+        landcover_mask = landcover_model_module.run_landcover_inference(
+            normalized_image, landcover_model
+        )
+
     if landcover_mask is not None and landcover_mask.shape != srtm_reference.shape:
         raise ValueError(
             f"landcover_mask shape {landcover_mask.shape} must match "
@@ -97,15 +111,26 @@ def run_stage1_only_nongeoreferenced(
     model,
     source_gsd_m: float = None,
     with_uncertainty: bool = False,
+    landcover_mask: np.ndarray = None,
+    landcover_model=None,
 ):
     """
     Non-georeferenced path: RGB -> relative height (Stage 1) -> normalized
     rDSM (Stage 2's normalize_for_visualization, no SRTM anchor -> no
     absolute scale).
+    
+    Land-cover mask can be provided or generated for plane-flattening
+    in Stage 3, even though we don't use it for calibration in Stage 2.
     """
     normalized_image, gsd_info = stage1_depth.normalize_gsd(
         rgb_image, source_gsd_m=source_gsd_m
     )
+
+    if landcover_mask is None and landcover_model is not None:
+        from app.models import landcover_model as landcover_model_module
+        landcover_mask = landcover_model_module.run_landcover_inference(
+            normalized_image, landcover_model
+        )
 
     confidence_map = None
     if with_uncertainty:
@@ -121,6 +146,8 @@ def run_stage1_only_nongeoreferenced(
         "relative_height": relative_height,
         "normalized_rdsm": normalized_rdsm,
         "confidence_map": confidence_map,
+        "calibration_method": "none_relative_only",  # non-georeferenced path doesn't calibrate to SRTM
         "gsd_info": gsd_info,
         "normalized_image": normalized_image,
+        "landcover_mask": landcover_mask,
     }

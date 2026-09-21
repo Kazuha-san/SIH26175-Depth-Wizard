@@ -9,10 +9,10 @@ from app.api.routes import router
 
 app = FastAPI(title="DepthWizard Backend")
 
-# Allow the local Vite dev server to call this API
+# Allow the local Vite dev server and standalone HTTP server to call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:8080"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
