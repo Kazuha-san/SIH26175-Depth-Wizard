@@ -48,6 +48,3 @@ Thumbs.db
 # --- Env / secrets ---
 .env
 .env.local
-
-# --- Demo ---
-standalone/

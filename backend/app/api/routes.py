@@ -31,9 +31,7 @@ from app.utils import geotiff_utils, image_utils
 router = APIRouter()
 
 UPLOAD_DIR = "/tmp/depthwizard_uploads"
-MESH_EXPORT_DIR = "/tmp/depthwizard_meshes"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(MESH_EXPORT_DIR, exist_ok=True)
 
 _JOBS = {}  # image_id -> {"status", "input_type", "metadata", "result", "error"}
 
@@ -131,7 +129,7 @@ async def run_pipeline(image_id: str, with_uncertainty: bool = True):
     if that raises NotImplementedError/an error, we fall back to the
     non-georeferenced (relative DSM) path and note that in the response
     rather than failing the whole request, since a relative DSM + mesh is
-    still a usable result for the demo.
+    still a usable result.
     """
     job = _JOBS.get(image_id)
     if job is None:
@@ -158,7 +156,18 @@ async def run_pipeline(image_id: str, with_uncertainty: bool = True):
                 srtm_reference = srtm_utils.resample_to_match(
                     srtm_raw_path, rgb_image.shape[:2], target_transform, target_crs
                 )
-                pipeline_out = _run_georeferenced(rgb_image, model, srtm_reference, with_uncertainty)
+                # BUG FIX: this was never passed before, silently forcing
+                # every georeferenced upload through normalize_gsd's
+                # "assumed_no_metadata" branch even though the GeoTIFF's
+                # own real resolution was sitting right here in metadata
+                # the whole time -- meaning GSD-matching (the whole reason
+                # normalize_gsd exists, see its module docstring) never
+                # actually ran for a single real georeferenced upload.
+                source_gsd_m = job["metadata"].get("resolution_m")
+                pipeline_out = _run_georeferenced(
+                    rgb_image, model, srtm_reference, with_uncertainty,
+                    source_gsd_m=source_gsd_m,
+                )
                 srtm_used = True
             except Exception as exc:
                 job["metadata"]["srtm_fallback_reason"] = str(exc)
@@ -176,8 +185,9 @@ async def run_pipeline(image_id: str, with_uncertainty: bool = True):
             if len(dist) <= 1:
                 print(
                     "[routes] WARNING: landcover_mask predicted only one class for this "
-                    "image -- building-flattening / tree-suppression will have no effect. "
-                    "Check the segmentation checkpoint (see landcover_model.load_landcover_model)."
+                    "image -- building-flattening / footprint-extraction / tree-instancing "
+                    "will have no effect. Check the segmentation checkpoint (see "
+                    "landcover_model.load_landcover_model)."
                 )
         cleaned_dsm = stage3_mesh_prep.clean_dsm_for_mesh(dsm, rgb_for_mesh, landcover_mask)
 
@@ -191,12 +201,9 @@ async def run_pipeline(image_id: str, with_uncertainty: bool = True):
                 "calibration_method": pipeline_out.get("calibration_method", "none_relative_only"),
                 "gsd_info": pipeline_out.get("gsd_info"),
             },
+            landcover_mask=landcover_mask,
         )
         payload["input_type"] = job["input_type"]
-
-        glb_path = os.path.join(MESH_EXPORT_DIR, f"{image_id}.glb")
-        stage3_mesh_prep.export_mesh_glb(cleaned_dsm, rgb_for_mesh, glb_path)
-        payload["mesh_glb_path"] = glb_path
 
         job["result"] = payload
         job["status"] = "done"
@@ -209,19 +216,20 @@ async def run_pipeline(image_id: str, with_uncertainty: bool = True):
         raise HTTPException(status_code=500, detail=f"Pipeline failed: {exc}")
 
 
-def _run_georeferenced(rgb_image, model, srtm_reference, with_uncertainty):
+def _run_georeferenced(rgb_image, model, srtm_reference, with_uncertainty, source_gsd_m=None):
     from app.pipeline import pipeline as pipeline_module
-    return pipeline_module.run_stage1_to_stage2_georeferenced(
+    return pipeline_module.run_tiled_stage1_to_stage2_georeferenced(
         rgb_image, model, srtm_reference,
         landcover_model=_get_seg_model(),
         with_uncertainty=with_uncertainty,
+        source_gsd_m=source_gsd_m,
     )
 
 
 def _run_nongeoreferenced(rgb_image, model, with_uncertainty):
     from app.pipeline import pipeline as pipeline_module
-    return pipeline_module.run_stage1_only_nongeoreferenced(
-        rgb_image, model, 
+    return pipeline_module.run_tiled_stage1_only_nongeoreferenced(
+        rgb_image, model,
         landcover_model=_get_seg_model(),
         with_uncertainty=with_uncertainty
     )
@@ -238,28 +246,3 @@ async def get_result(image_id: str):
     if job["status"] != "done":
         return {"status": job["status"]}
     return job["result"]
-
-
-@router.get("/mesh/{image_id}")
-async def download_mesh(image_id: str):
-    """
-    Downloads the standalone .glb mesh for an already-processed image --
-    a real, portable glTF asset viewable in any glTF viewer, not just this
-    app's own Three.js viewer. Satisfies the PS's "standalone deployable"
-    requirement independent of the live frontend.
-    """
-    from fastapi.responses import FileResponse
-
-    job = _JOBS.get(image_id)
-    if job is None or job.get("status") != "done":
-        raise HTTPException(status_code=404, detail=f"No completed mesh for image_id: {image_id}")
-
-    glb_path = job["result"].get("mesh_glb_path")
-    if not glb_path or not os.path.exists(glb_path):
-        raise HTTPException(status_code=404, detail="Mesh file not found on disk.")
-
-    return FileResponse(
-        glb_path,
-        media_type="model/gltf-binary",
-        filename=f"depthwizard_{image_id}.glb",
-    )

@@ -3,6 +3,10 @@ fastapi
 uvicorn[standard]
 python-multipart
 
+# Desktop app window (see desktop_app.py) -- opens the built frontend
+# in a native OS window instead of a browser tab
+pywebview
+
 # ML
 torch
 torchvision
@@ -18,8 +22,6 @@ numpy
 scipy
 opencv-python
 pillow
-trimesh
-pygltflib
 
 # Dev / testing
 pytest

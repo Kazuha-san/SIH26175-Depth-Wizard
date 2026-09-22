@@ -103,6 +103,145 @@ def run_stage1_to_stage2_georeferenced(
         "calibration_params": per_class_params,
         "gsd_info": gsd_info,
         "normalized_image": normalized_image,
+        # BUG FIX: this was never returned, so routes.py's
+        # pipeline_out.get("landcover_mask") always came back None for the
+        # georeferenced path, which silently disabled Stage 3's
+        # flatten_planar_classes for every GeoTIFF/SRTM
+        # image -- exactly the path with real absolute heights worth cleaning.
+        "landcover_mask": landcover_mask,
+    }
+
+
+def run_tiled_stage1_to_stage2_georeferenced(
+    rgb_image: np.ndarray,
+    model,
+    srtm_reference: np.ndarray,
+    landcover_mask: np.ndarray = None,
+    landcover_model=None,
+    source_gsd_m: float = None,
+    with_uncertainty: bool = False,
+    overlap_frac: float = None,
+):
+    """
+    Tiled version of run_stage1_to_stage2_georeferenced: splits rgb_image
+    into overlapping GSD-matched tiles (tiling.run_tiled_stage1), runs
+    Stage 1 (+ land-cover) per tile, stitches into ONE full-resolution
+    canvas covering the WHOLE input image, then runs Stage 2 calibration
+    ONCE against srtm_reference over that full canvas -- not per tile,
+    see tiling.py's module docstring for why (a per-tile calibration
+    would let neighboring tiles disagree on absolute scale and produce a
+    seam at every tile boundary; stitching relative height first and
+    calibrating once afterward avoids that by construction).
+
+    BUG FIX vs. the single-crop path: srtm_reference is expected at
+    rgb_image's FULL native resolution (that's what routes.py's
+    srtm_utils.resample_to_match already produces, and always did) -- the
+    single-crop path instead produced a 512x512-cropped normalized_image
+    and compared IT against srtm_reference's full-resolution shape, which
+    would raise a shape-mismatch for any real upload that wasn't already
+    exactly 512x512. Tiling fixes this as a side effect, simply by using
+    the full-resolution canvas as "normalized_image" instead of one crop.
+
+    landcover_mask passed in directly (e.g. GAMUS ground truth for
+    testing) still takes priority over landcover_model, same as the
+    single-crop path.
+    """
+    from app.pipeline import tiling
+    from app import config
+
+    if overlap_frac is None:
+        overlap_frac = config.TILE_OVERLAP_FRAC
+
+    relative_height, confidence_map, landcover_mask_tiled, gsd_info = tiling.run_tiled_stage1(
+        rgb_image, model,
+        landcover_model=(landcover_model if landcover_mask is None else None),
+        source_gsd_m=source_gsd_m, with_uncertainty=with_uncertainty,
+        overlap_frac=overlap_frac, max_tiles=config.MAX_TILES,
+    )
+
+    if landcover_mask is None:
+        landcover_mask = landcover_mask_tiled
+
+    if relative_height.shape != srtm_reference.shape:
+        raise ValueError(
+            f"Stitched relative_height shape {relative_height.shape} does not "
+            f"match srtm_reference shape {srtm_reference.shape}. srtm_reference "
+            f"must be resampled to rgb_image's own full shape (see "
+            f"srtm_utils.resample_to_match) before calling this."
+        )
+    if landcover_mask is not None and landcover_mask.shape != srtm_reference.shape:
+        raise ValueError(
+            f"landcover_mask shape {landcover_mask.shape} must match "
+            f"srtm_reference shape {srtm_reference.shape}."
+        )
+
+    if landcover_mask is not None:
+        calibrated_dsm, per_class_params = stage2_calibration.per_class_calibration(
+            relative_height, srtm_reference, landcover_mask
+        )
+        calibration_method = "per_class"
+    else:
+        a, b, calibrated_dsm = stage2_calibration.global_affine_fit(
+            relative_height, srtm_reference
+        )
+        per_class_params = {"a": a, "b": b}
+        calibration_method = "global_affine"
+
+    return {
+        "relative_height": relative_height,
+        "calibrated_dsm": calibrated_dsm,
+        "confidence_map": confidence_map,
+        "calibration_method": calibration_method,
+        "calibration_params": per_class_params,
+        "gsd_info": gsd_info,
+        # Full-resolution canvas, not one 512x512 crop -- this IS the
+        # whole input image (RGB texture for the full DSM/mask).
+        "normalized_image": rgb_image,
+        "landcover_mask": landcover_mask,
+    }
+
+
+def run_tiled_stage1_only_nongeoreferenced(
+    rgb_image: np.ndarray,
+    model,
+    source_gsd_m: float = None,
+    with_uncertainty: bool = False,
+    landcover_mask: np.ndarray = None,
+    landcover_model=None,
+    overlap_frac: float = None,
+):
+    """
+    Tiled version of run_stage1_only_nongeoreferenced: same tiling +
+    stitching as the georeferenced tiled path, minus the SRTM calibration
+    step (normalize_for_visualization instead, exactly as the single-crop
+    path did).
+    """
+    from app.pipeline import tiling
+    from app import config
+
+    if overlap_frac is None:
+        overlap_frac = config.TILE_OVERLAP_FRAC
+
+    relative_height, confidence_map, landcover_mask_tiled, gsd_info = tiling.run_tiled_stage1(
+        rgb_image, model,
+        landcover_model=(landcover_model if landcover_mask is None else None),
+        source_gsd_m=source_gsd_m, with_uncertainty=with_uncertainty,
+        overlap_frac=overlap_frac, max_tiles=config.MAX_TILES,
+    )
+
+    if landcover_mask is None:
+        landcover_mask = landcover_mask_tiled
+
+    normalized_rdsm = stage2_calibration.normalize_for_visualization(relative_height)
+
+    return {
+        "relative_height": relative_height,
+        "normalized_rdsm": normalized_rdsm,
+        "confidence_map": confidence_map,
+        "calibration_method": "none_relative_only",
+        "gsd_info": gsd_info,
+        "normalized_image": rgb_image,
+        "landcover_mask": landcover_mask,
     }
 
 

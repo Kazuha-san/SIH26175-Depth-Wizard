@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-import Navbar from "./components/Navbar";
+import AnimatedBackground from "./components/AnimatedBackground";
 import UploadView from "./components/UploadView";
 import ProcessingView from "./components/ProcessingView";
 import ResultsView from "./components/ResultsView";
@@ -163,18 +163,8 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F7F9] text-gray-900">
-      {/* ======================================================
-          NAVBAR
-      ====================================================== */}
-
-      <Navbar
-        currentView={currentView}
-        setCurrentView={handleViewChange}
-        onNewImage={handleNewImage}
-        hasUploadedImage={!!selectedFile}
-        hasResult={!!resultData}
-      />
+    <div className="min-h-screen text-ink">
+      <AnimatedBackground />
 
       {/* ======================================================
           MAIN CONTENT

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Image as ImageIcon, Layers } from "lucide-react";
+import { ArrowRight, ArrowUp, Image as ImageIcon, Layers } from "lucide-react";
 
 import ExampleGallery, { EXAMPLE_DRAG_MIME, loadExampleAsFile } from "./ExampleGallery";
 import exampleImages from "../data/exampleImages";
+import logo from "../assets/depthwizard-icon.png";
 
 const UploadView = ({
   selectedFile,
@@ -99,25 +100,30 @@ const UploadView = ({
   };
 
   return (
-    <section className="min-h-[calc(100vh-64px)] px-6 py-10">
-      <div className="mx-auto max-w-6xl">
-        {/* Heading */}
-        <div className="mb-8">
-          <div className="mb-3 inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
-            STEP 01 · INPUT
-          </div>
+    <section className="relative flex min-h-screen items-center overflow-hidden px-6 py-8">
+      <div className="relative z-10 mx-auto w-full max-w-6xl">
+        {/* Hero */}
+        <div className="mb-6 text-center">
+          <img src={logo} alt="DepthWizard" className="mx-auto mb-2 h-24 w-auto" />
 
-          <h2 className="text-3xl font-bold tracking-tight text-gray-900">
-            Upload satellite imagery
-          </h2>
+          <h1 className="font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
+            DepthWizard
+          </h1>
 
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
-            Upload an optical RGB image to generate a Digital Surface Model and
-            explore the reconstructed terrain in 3D.
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-ink-soft">
+            Upload an optical RGB image or GeoTIFF and DepthWizard reconstructs
+            a Digital Surface Model you can explore as an interactive 3D
+            terrain.
           </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div
+          className={
+            exampleImages.length > 0
+              ? "grid gap-5 lg:grid-cols-[1fr_300px]"
+              : "mx-auto max-w-2xl"
+          }
+        >
           <div>
         {/* Upload Card */}
         <div
@@ -127,29 +133,29 @@ const UploadView = ({
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`rounded-2xl border-2 border-dashed p-10 text-center transition ${
+          className={`relative overflow-hidden rounded-3xl border-2 border-dashed p-7 text-center shadow-[0_1px_2px_rgba(11,19,36,0.04)] backdrop-blur-sm transition-all duration-200 ${
             isDragging
-              ? "border-blue-500 bg-blue-50"
-              : "border-gray-300 bg-white hover:border-blue-300"
+              ? "border-teal-400 bg-teal-50/70 shadow-[0_0_0_6px_rgba(18,184,166,0.08)]"
+              : "border-blue-200/70 bg-white/90 hover:border-blue-300 hover:bg-white"
           }`}
         >
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-2xl">
-            ↑
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-deep to-teal text-2xl text-white shadow-lg shadow-blue-600/20">
+            <ArrowUp size={24} strokeWidth={2.5} />
           </div>
 
-          <h3 className="mt-5 text-lg font-semibold text-gray-900">
+          <h3 className="mt-4 font-display text-lg font-semibold text-ink">
             Drop your image here
           </h3>
 
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-1.5 text-sm text-ink-soft">
             PNG, JPG, JPEG or GeoTIFF
           </p>
 
           <button
             onClick={handleBrowse}
-            className="mt-6 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            className="mt-5 rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-deep"
           >
-            Browse Files
+            Browse files
           </button>
 
           <input
@@ -163,17 +169,19 @@ const UploadView = ({
 
         {/* Error */}
         {errorMessage && (
-          <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {errorMessage}
           </div>
         )}
 
-        {/* Selected File */}
+        {/* Selected File -- full preview so you can actually confirm what
+            got uploaded before running the pipeline (not previewing the
+            processed output, just the raw input) */}
         {selectedFile && (
-          <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mt-4 rounded-3xl border border-gray-100 bg-white/95 p-4 shadow-[0_1px_2px_rgba(11,19,36,0.04)] backdrop-blur-sm">
             <div className="flex items-center justify-between gap-4">
-              <div className="flex min-w-0 items-center gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gray-100">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface">
                   {previewUrl ? (
                     <img
                       src={previewUrl}
@@ -181,18 +189,18 @@ const UploadView = ({
                       className="h-full w-full object-cover"
                     />
                   ) : detectFileType(selectedFile) === "GeoTIFF" ? (
-                    <Layers className="text-gray-400" size={22} />
+                    <Layers className="text-blue-500" size={20} />
                   ) : (
-                    <ImageIcon className="text-gray-400" size={22} />
+                    <ImageIcon className="text-blue-500" size={20} />
                   )}
                 </div>
 
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-gray-900">
+                  <p className="truncate text-sm font-semibold text-ink">
                     {selectedFile.name}
                   </p>
 
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-0.5 text-xs text-ink-soft">
                     {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                     {" · "}
                     {detectFileType(selectedFile)}
@@ -207,58 +215,77 @@ const UploadView = ({
                 Remove
               </button>
             </div>
+
+            {previewUrl ? (
+              <div className="mt-3 overflow-hidden rounded-2xl border border-gray-100 bg-surface">
+                <img
+                  src={previewUrl}
+                  alt={`Full preview of ${selectedFile.name}`}
+                  className="max-h-[220px] w-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="mt-3 flex items-center gap-3 rounded-2xl border border-gray-100 bg-surface p-3 text-sm text-ink-soft">
+                <Layers size={18} className="shrink-0 text-blue-400" />
+                GeoTIFF files can't be previewed directly in the browser (no
+                native image decode) -- it will still process normally.
+              </div>
+            )}
           </div>
         )}
 
         {/* Input Information */}
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <div className="rounded-2xl border border-gray-100 bg-white/90 p-4 backdrop-blur-sm">
+            <p className="text-xs font-semibold uppercase tracking-wider text-blue-500">
               Non-georeferenced
             </p>
 
-            <h4 className="mt-2 font-semibold text-gray-900">PNG / JPG</h4>
+            <h4 className="mt-1.5 font-display font-semibold text-ink">PNG / JPG</h4>
 
-            <p className="mt-2 text-sm leading-5 text-gray-500">
+            <p className="mt-1.5 text-sm leading-5 text-ink-soft">
               Generates a relative height model for visualization.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+          <div className="rounded-2xl border border-gray-100 bg-white/90 p-4 backdrop-blur-sm">
+            <p className="text-xs font-semibold uppercase tracking-wider text-teal-600">
               Georeferenced
             </p>
 
-            <h4 className="mt-2 font-semibold text-gray-900">GeoTIFF</h4>
+            <h4 className="mt-1.5 font-display font-semibold text-ink">GeoTIFF</h4>
 
-            <p className="mt-2 text-sm leading-5 text-gray-500">
+            <p className="mt-1.5 text-sm leading-5 text-ink-soft">
               Supports geographic metadata and metric calibration.
             </p>
           </div>
         </div>
 
         {/* Run */}
-        <div className="mt-8 flex justify-end">
+        <div className="mt-5 flex justify-end">
           <button
             onClick={onRunPipeline}
             disabled={!selectedFile || isUploading}
-            className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-deep to-teal px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-none disabled:bg-gray-300 disabled:shadow-none"
           >
-            {isUploading ? "Uploading…" : "Run Pipeline →"}
+            {isUploading ? "Uploading…" : "Run pipeline"}
+            {!isUploading && <ArrowRight size={16} />}
           </button>
         </div>
           </div>
 
           {/* Sidebar -- preloaded example gallery */}
-          <div className="flex flex-col gap-4">
-            <ExampleGallery onSelectExample={handleSelectExample} disabled={isUploading} />
+          {exampleImages.length > 0 && (
+            <div className="flex flex-col gap-4">
+              <ExampleGallery onSelectExample={handleSelectExample} disabled={isUploading} />
 
-            {galleryError && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                {galleryError}
-              </div>
-            )}
-          </div>
+              {galleryError && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  {galleryError}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </section>

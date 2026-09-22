@@ -1,4 +1,14 @@
-const API_BASE = "http://localhost:8000";
+// In merged/desktop mode the backend serves the frontend itself, so the
+// API is same-origin -- use a relative base ("") and let the browser
+// resolve it against whatever host/port the app is actually running on.
+// In dev mode (Vite's own server on 5173) the frontend and backend run
+// on different ports, so fall back to the backend's default port.
+// Override either way with VITE_API_BASE in a .env file if needed.
+const API_BASE =
+  import.meta.env.VITE_API_BASE ||
+  (typeof window !== "undefined" && window.location.port === "5173"
+    ? "http://localhost:8000"
+    : "");
 
 const parseErrorDetail = async (response) => {
   try {

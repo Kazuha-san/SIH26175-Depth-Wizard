@@ -9,12 +9,45 @@ no deployment.
   local server. See `backend/app/pipeline/` for the 3-stage pipeline logic.
 - `frontend/` -- JavaScript. React + Three.js visualization UI. See
   `frontend/src/components/viewport/` for the 3D rendering.
-- `agent-prompts/` -- Instruction files (.md) for coding agents (Google
-  models / Qwen3 Coder) handling repetitive/simple tasks. Anything
-  system-critical still goes through manual review.
-- `docs/` -- Roadmap and UI component reference for the team.
 
 ## Running locally
+
+### First time after cloning
+
+1. **Get the model checkpoints.** They're too large for GitHub
+   (`landcover_seg_v6.pth` is 127MB, over GitHub's 100MB hard limit) so
+   they're git-ignored, not in the repo. Get `depth_anything_v2_gamus_v4.pth`
+   and `landcover_seg_v6.pth` from **[TODO: add your shared Drive/storage
+   link here]** and place both in `backend/checkpoints/`.
+2. Make sure you have **Python 3.10+** and **Node.js** installed.
+3. Run the launcher for your OS (see below) -- it handles the Python venv,
+   dependencies, and frontend build automatically on first run.
+
+### Launching the app (one click, after first-time setup above)
+
+- **Windows:** double-click `run_windows.bat`
+
+A terminal window stays open behind the app -- that's normal, it's
+showing backend logs. Close the app window, or Ctrl+C in the terminal, to
+stop everything. First launch takes longer (creates a Python venv, builds
+the frontend); after that it starts in a few seconds.
+
+### Manual / dev mode
+
+If you'd rather run things by hand, or you're actively developing:
+
+As a desktop app (one native window, no browser):
+```
+cd frontend
+npm install
+npm run build        # one-time, or after any frontend change
+
+cd ../backend
+pip install -r requirements.txt
+python desktop_app.py
+```
+
+As two dev servers (for hot-reload frontend development):
 
 Backend:
 ```
@@ -30,7 +63,8 @@ npm install
 npm run dev
 ```
 
-Frontend talks to backend over `http://localhost:8000`.
+Frontend dev server runs at `http://localhost:5173` and talks to the
+backend at `http://localhost:8000`.
 
 ## Pipeline stages (see backend/app/pipeline/)
 
