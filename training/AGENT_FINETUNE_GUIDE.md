@@ -107,18 +107,3 @@ grids back, and DO NOT rename the file to `landcover_seg_v6.pth` yourselves
 -- that swap happens deliberately once compared against the other
 teammate's run, not automatically inside this loop.
 
-## Comparing two parallel runs (teamA vs teamB)
-
-Since two people are running this independently with different `RUN_NAME`s,
-when both have a candidate:
-1. Compare mean IoU AND the full per-class table side by side, not just the
-   headline number -- one approach might trade building IoU for tree IoU,
-   which matters differently depending on what's currently weakest in the
-   live pipeline output.
-2. Compare visual grids on the SAME validation samples if possible (both
-   approaches used the same `GAMUS_SPLIT_VAL`/`NUM_VAL_SAMPLES`, so index
-   `0..3` in Section 8 should be the same underlying tiles across both
-   runs -- a fair side-by-side).
-3. Prefer whichever approach's mistakes are more "fixable later" (e.g.
-   slightly blobby edges) over whichever has "confidently wrong" mistakes
-   (e.g. missing a whole class in some tiles) even at similar mean IoU.

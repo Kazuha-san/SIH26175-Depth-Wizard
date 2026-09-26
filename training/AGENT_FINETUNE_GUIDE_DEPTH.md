@@ -130,13 +130,3 @@ to `depth_anything_v2_gamus_v4.pth` yourselves -- that swap happens
 deliberately once compared against any other parallel attempt, not
 automatically inside this loop.
 
-## Comparing parallel runs
-
-Same principle as the segmentation guide: compare full per-class tables
-side by side (not just overall MAE), prefer whichever run's remaining
-errors look more "fixable downstream" (e.g. slightly noisy but unbiased)
-over whichever has a systematic bias in one class, and use the SAME
-validation tile in Section 8 across runs where possible (it's selected
-deterministically by highest building+tree coverage within `val_ds`, so
-runs using the same `N_TILES`/`MIN_HARD_CLASS_TILES`/seed should land on
-a comparable tile).
