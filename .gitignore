@@ -1,6 +1,3 @@
-# --- Agent prompt files (local-only, not part of the codebase) ---
-agent-prompts/
-
 # --- Python (backend) ---
 __pycache__/
 *.pyc
@@ -15,10 +12,7 @@ htmlcov/
 coverage.xml
 
 # --- Test artifacts / local validation only ---
-TEST_REPORT.md
-backend/e2e_api_results.json
-backend/test_images/
-backend/tests/
+testing_images/
 
 # Model checkpoints / weights (large files, don't commit)
 backend/checkpoints/

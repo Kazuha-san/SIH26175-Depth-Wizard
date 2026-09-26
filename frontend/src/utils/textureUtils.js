@@ -30,12 +30,19 @@ export const loadTextureFromBase64 = (base64) => {
 };
 
 // Low-confidence -> high-confidence color ramp for the uncertainty overlay.
-// Red/orange reads as "less sure" and green as "confident" -- a common,
-// intuitive convention, not a domain-specific one that needs a legend to parse.
+// Deliberately a single-hue (violet) ramp rather than another red/green/
+// rainbow scheme -- the elevation ramp already uses blue/teal/green/
+// yellow/orange/red/white, so a red-amber-green confidence ramp read as
+// "just another heatmap" and was easy to confuse with elevation at a
+// glance. Both ends are kept far from white/black -- a near-white top
+// stop made real, high-confidence results (which cluster ~0.85-0.98 in
+// practice) render as a flat, near-blank surface indistinguishable from
+// "no texture loaded", which is exactly the "confidence doesn't work"
+// symptom this replaces.
 const CONFIDENCE_RAMP = [
-  { stop: 0.0, color: [239, 68, 68] },   // red   -- low confidence
-  { stop: 0.5, color: [250, 204, 21] },  // amber -- mid
-  { stop: 1.0, color: [34, 197, 94] },   // green -- high confidence
+  { stop: 0.0, color: [30, 27, 75] },    // dark indigo -- low confidence
+  { stop: 0.5, color: [147, 51, 234] },  // violet -- mid
+  { stop: 1.0, color: [45, 212, 191] },  // teal -- high confidence
 ];
 
 const rampColorAt = (t) => {
@@ -63,6 +70,14 @@ const CONFIDENCE_LUT = Array.from({ length: 256 }, (_, i) => rampColorAt(i / 255
  * through CONFIDENCE_RAMP on a canvas, returning a THREE.CanvasTexture --
  * this is what makes the uncertainty overlay (Innovation #2) actually
  * visible on the terrain instead of a hard-to-read grayscale map.
+ *
+ * Real confidence values tend to cluster in a narrow high range (e.g.
+ * 0.85-0.98) rather than spanning 0-1, so mapping raw gray values
+ * straight through the ramp only ever shows a thin sliver of it and the
+ * whole terrain looks like one flat color. This does a per-image min/max
+ * contrast stretch first (same idea as the heightmap preview) so the
+ * full ramp -- and therefore real variation in confidence -- is always
+ * visible, whatever the actual value range happens to be.
  */
 export const loadConfidenceTextureFromBase64 = (base64) => {
   if (!base64) {
@@ -86,9 +101,19 @@ export const loadConfidenceTextureFromBase64 = (base64) => {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const { data } = imageData;
 
+      let min = 255;
+      let max = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = data[i];
+        if (gray < min) min = gray;
+        if (gray > max) max = gray;
+      }
+      const range = Math.max(1, max - min);
+
       for (let i = 0; i < data.length; i += 4) {
         const gray = data[i]; // grayscale PNG -- R, G, B channels are equal
-        const [r, g, b] = CONFIDENCE_LUT[gray];
+        const stretched = Math.round(((gray - min) / range) * 255);
+        const [r, g, b] = CONFIDENCE_LUT[stretched];
         data[i] = r;
         data[i + 1] = g;
         data[i + 2] = b;

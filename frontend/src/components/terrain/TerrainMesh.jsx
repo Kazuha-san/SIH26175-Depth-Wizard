@@ -3,9 +3,9 @@ import * as THREE from "three";
 
 import { getHeightData } from "../../utils/getHeightData";
 import { createTerrainGeometry } from "../../utils/terrainUtils";
-import { loadTextureFromBase64, loadConfidenceTextureFromBase64 } from "../../utils/textureUtils";
+import { loadConfidenceTextureFromBase64 } from "../../utils/textureUtils";
 
-const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, textureMode = "rgb", onError }) => {
+const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, textureMode = "elevation", onError }) => {
   const [geometry, setGeometry] = useState(null);
   const [texture, setTexture] = useState(null);
 
@@ -68,24 +68,30 @@ const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, textureMode = "rg
       return null;
     });
 
-    const base64 = textureMode === "confidence"
-      ? resultData?.confidence_png_b64
-      : resultData?.texture_png_b64;
+    // Elevation mode uses per-vertex colors baked into the geometry itself
+    // (see terrainUtils.createTerrainGeometry) -- no texture to load.
+    // Solid mode is a flat, untextured structural view (single tint,
+    // flat-shaded so slanted vs flat roofs catch light differently) --
+    // also no texture to load.
+    if (textureMode === "elevation" || textureMode === "solid") {
+      return undefined;
+    }
+
+    // Elevation, Solid, and Confidence are the only remaining modes --
+    // the RGB/Imagery drape was dropped (looked stretched/ugly on
+    // non-georeferenced crops and didn't distinguish buildings from
+    // vegetation, per judge feedback). This branch only ever runs for
+    // "confidence" now.
+    const base64 = resultData?.confidence_png_b64;
 
     if (!base64) {
       onError?.(
-        textureMode === "confidence"
-          ? "No confidence data available for this result (uncertainty pass wasn't run)."
-          : "No imagery texture was returned for this result.",
+        "No confidence data available for this result (uncertainty pass wasn't run).",
       );
       return undefined;
     }
 
-    const loader = textureMode === "confidence"
-      ? loadConfidenceTextureFromBase64
-      : loadTextureFromBase64;
-
-    loader(base64)
+    loadConfidenceTextureFromBase64(base64)
       .then((loadedTexture) => {
         if (cancelled) {
           loadedTexture.dispose();
@@ -135,10 +141,30 @@ const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, textureMode = "rg
       castShadow
       receiveShadow
     >
+      {/* key={textureMode} forces a fresh material instance on mode switch --
+          flatShading is a shader-recompile flag that React Three Fiber
+          won't pick up on a prop change to an existing material instance
+          (it needs material.needsUpdate = true), so remounting avoids that
+          gotcha entirely. */}
       <meshStandardMaterial
-        map={texture || undefined}
-        color={texture ? "#ffffff" : "#8fa56b"}
-        roughness={0.92}
+        key={textureMode}
+        map={
+          textureMode === "elevation" || textureMode === "solid"
+            ? undefined
+            : texture || undefined
+        }
+        vertexColors={textureMode === "elevation"}
+        flatShading={textureMode === "solid"}
+        color={
+          textureMode === "elevation"
+            ? "#ffffff"
+            : textureMode === "solid"
+              ? "#a9c2d9"
+              : texture
+                ? "#ffffff"
+                : "#4c1d95"
+        }
+        roughness={textureMode === "solid" ? 0.65 : 0.92}
         metalness={0}
         side={THREE.DoubleSide}
       />
