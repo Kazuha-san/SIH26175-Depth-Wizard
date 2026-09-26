@@ -87,6 +87,83 @@ def _resize_classes_nearest(arr: np.ndarray, target_side: int) -> np.ndarray:
     return np.array(img.resize((target_side, target_side), Image.NEAREST)).astype(np.int64)
 
 
+def _align_tile_to_canvas(tile_height: np.ndarray, height_accum: np.ndarray,
+                           weight_accum: np.ndarray, region) -> np.ndarray:
+    """
+    Rescales/offsets `tile_height` (this tile's raw relative-height output,
+    on its own arbitrary scale-invariant-model scale) to match whatever has
+    already been accumulated into the canvas in `region`, using ONLY the
+    pixels that already have real weight there (i.e. the overlap with
+    previously-placed tiles). First tile placed has no overlap yet -- it
+    defines the canvas's scale and passes through unchanged.
+
+    Without this, two tiles can each be internally correct but sit on
+    different absolute relative-height scales (scale-invariant loss makes
+    no promise they'll agree), and a purely spatial (Hann) blend between
+    them produces a sharp value discontinuity right at the tile boundary --
+    a straight/diagonal seam that tracks the tile grid, not the terrain.
+
+    Fit is least-squares scale (a) + offset (b): a*tile + b ~= existing
+    canvas value, solved only over already-covered pixels in this tile's
+    footprint.
+
+    FIX: this used to bail out to complete identity (a=1, b=0 -- NO
+    correction at all) whenever the overlap region had near-zero
+    variance (`np.ptp(tile_vals) < 1e-6`). That guard was meant for a
+    genuinely degenerate case, but near-constant overlap is actually the
+    COMMON case -- flat rooftops, roads, open ground/pavement, i.e.
+    exactly the areas most likely to sit at a tile seam. A flat overlap
+    means SCALE (the slope `a`) can't be reliably estimated (there's no
+    variation to fit a slope against), but the OFFSET absolutely still
+    can be: just the weighted mean difference between this tile and
+    what's already in the canvas there. Skipping correction entirely
+    left this tile's own mismatched absolute scale (scale-invariant
+    model, no promise of agreement between tiles) blend straight into
+    the canvas via the Hann window -- and because that window is peaked
+    at the tile's own center and tapers to ~0 at its edges, an unaligned
+    tile's mismatch shows up as a four-sided tent/pyramid centered on the
+    tile, exactly the "spike out of nowhere on flat ground" artifact this
+    was supposed to prevent in the first place.
+
+    Never produces NaNs: only truly falls back to identity when there's
+    no overlap to compare against at all (first tile placed).
+    """
+    existing_weight = weight_accum[region]
+    covered = existing_weight > 1e-6
+    if not np.any(covered):
+        return tile_height  # nothing to align against yet -- first tile
+
+    existing_height = height_accum[region][covered] / existing_weight[covered]
+    tile_vals = tile_height[covered]
+    w = existing_weight[covered]
+
+    if tile_vals.size < 2 or np.ptp(tile_vals) < 1e-6:
+        # Can't fit a reliable slope on a flat/near-constant overlap, but
+        # an offset-only correction (a=1, weighted-mean b) still fixes
+        # the far more common failure mode here: this tile's whole
+        # absolute level disagreeing with its neighbor's.
+        b = float(np.average(existing_height - tile_vals, weights=w))
+        return tile_height + b
+
+    # Weighted least squares (weight by existing confidence in that pixel)
+    # for [a, b] in a*tile_vals + b = existing_height.
+    A = np.stack([tile_vals, np.ones_like(tile_vals)], axis=1)
+    W = np.sqrt(w)[:, None]
+    try:
+        sol, *_ = np.linalg.lstsq(A * W, existing_height * np.sqrt(w), rcond=None)
+        a, b = sol
+    except np.linalg.LinAlgError:
+        # Same offset-only fallback if the full affine fit fails for any
+        # other numerical reason -- still better than no correction.
+        b = float(np.average(existing_height - tile_vals, weights=w))
+        return tile_height + b
+
+    if not np.isfinite(a) or not np.isfinite(b) or abs(a) < 1e-6:
+        return tile_height  # degenerate fit -- don't blow up the tile
+
+    return tile_height * a + b
+
+
 def run_tiled_stage1(rgb_image: np.ndarray, model, landcover_model=None,
                       source_gsd_m: float = None, with_uncertainty: bool = False,
                       overlap_frac: float = 0.2, max_tiles: int = 64):
@@ -169,6 +246,15 @@ def run_tiled_stage1(rgb_image: np.ndarray, model, landcover_model=None,
         tile_height_native = _resize_float(tile_height, tile_side_px)
 
         region = np.s_[top:top + tile_side_px, left:left + tile_side_px]
+
+        # Reconcile this tile's arbitrary relative-height scale with
+        # whatever's already been placed in the canvas (see
+        # _align_tile_to_canvas docstring) BEFORE blending it in -- doing
+        # this after would just blend two already-mismatched scales.
+        tile_height_native = _align_tile_to_canvas(
+            tile_height_native, height_accum, weight_accum, region
+        )
+
         height_accum[region] += tile_height_native * window
         weight_accum[region] += window
 

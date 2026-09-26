@@ -12,7 +12,7 @@ htmlcov/
 coverage.xml
 
 # --- Test artifacts / local validation only ---
-testing_images/
+testing/
 
 # Model checkpoints / weights (large files, don't commit)
 backend/checkpoints/

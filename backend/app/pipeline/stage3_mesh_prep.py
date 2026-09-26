@@ -126,20 +126,72 @@ def flatten_planar_classes(dsm: np.ndarray, landcover_mask: np.ndarray,
                 continue
             x_valid, y_valid, z_valid = x[valid], y[valid], z[valid]
 
-            single_coeffs = _fit_plane_lstsq(x_valid, y_valid, z_valid)
-            single_plane_fitted = _eval_plane(single_coeffs, x_valid, y_valid)
-            residual_rms = float(np.sqrt(np.mean((single_plane_fitted - z_valid) ** 2)))
-            height_range = float(z_valid.max() - z_valid.min())
+            # Fit on robust inliers only (see _robust_inlier_mask) so a
+            # localized hallucinated cluster can't drag the whole roof's
+            # plane up/down to match it. Falls back to all valid pixels
+            # if too few survive (degenerate/small blob -- not enough
+            # left to trust a "trimmed" fit over just using everything).
+            inliers = _robust_inlier_mask(z_valid)
+            if inliers.sum() < min_pixels:
+                inliers = np.ones_like(z_valid, dtype=bool)
+            x_fit, y_fit, z_fit = x_valid[inliers], y_valid[inliers], z_valid[inliers]
+
+            single_coeffs = _fit_plane_lstsq(x_fit, y_fit, z_fit)
+            single_plane_fitted = _eval_plane(single_coeffs, x_fit, y_fit)
+            residual_rms = float(np.sqrt(np.mean((single_plane_fitted - z_fit) ** 2)))
+            # Robust range (from the inlier set), NOT the raw z_valid
+            # range -- z_valid.max() can literally BE the hallucinated
+            # outlier we're trying to protect against, so clipping to it
+            # later would still let the whole roof sit right up against
+            # that inflated ceiling.
+            height_range = float(z_fit.max() - z_fit.min())
 
             # Evaluate over the FULL blob (not just the valid subset) so any
             # NaN/invalid pixels inside the footprint get filled by the
             # fitted plane too, same as before this function tracked residuals.
             plane_values = _eval_plane(single_coeffs, x, y)
             if height_range > 1e-6 and (residual_rms / height_range) > gable_residual_threshold_frac:
-                gable_values = _try_gable_split(x, y, z, valid, min_pixels_per_gable_half)
-                if gable_values is not None:
+                # Same robust-inlier protection for the gable fit: build a
+                # "valid AND inlier" mask over the full blob so
+                # _try_gable_split's PCA/plane fitting also ignores the
+                # hallucinated cluster, not just the single-plane path.
+                valid_trimmed = valid.copy()
+                valid_trimmed[valid] = inliers
+                gable_values, gable_residual_rms = _try_gable_split(
+                    x, y, z, valid_trimmed, min_pixels_per_gable_half
+                )
+                # FIX: a high single-plane residual isn't proof this roof
+                # is actually a gable -- it's just as often the depth
+                # model's own known noise on an ordinarily FLAT rooftop
+                # (see stage1_depth's docstring on why v5's structure_loss
+                # experiment was reverted). Forcing a two-plane hinge fit
+                # onto noise it doesn't real describe lets the fit chase
+                # that noise: `a`/`b` come out large, and the resulting
+                # tent shape spikes wherever |u| and v are largest -- one
+                # corner of the footprint -- producing an unnatural sharp
+                # peak instead of a flat roof. Only actually commit to the
+                # gable fit if it's a MEANINGFULLY better fit than staying
+                # flat; otherwise a flat (if imperfect) single plane is
+                # the safer, more honest answer than a confident wrong
+                # spike.
+                if (
+                    gable_values is not None
+                    and gable_residual_rms < 0.7 * residual_rms
+                ):
                     plane_values = gable_values
                     n_gable_split += 1
+
+            # FIX: whichever fit was used (single-plane or gable), never
+            # let it extrapolate beyond the heights actually observed on
+            # this roof. A footprint isn't a rectangle -- odd/concave
+            # corners can sit far from the fit's centroid, where even a
+            # decent-in-aggregate plane fit extrapolates to an
+            # unrealistic value. Clamped to the ROBUST [z_fit.min(),
+            # z_fit.max()] range, not the raw z_valid range -- z_valid's
+            # own max can literally BE the hallucinated outlier we just
+            # excluded from fitting, so clipping to it would still let a
+            # dragged-up plane sit right at that inflated ceiling.
+            plane_values = np.clip(plane_values, z_fit.min(), z_fit.max())
 
             result[blob_mask] = plane_values
 
@@ -147,6 +199,41 @@ def flatten_planar_classes(dsm: np.ndarray, landcover_mask: np.ndarray,
         logger.debug("flatten_planar_classes: %d blob(s) fit as two-plane (gable-style) roofs", n_gable_split)
 
     return result
+
+
+def _robust_inlier_mask(z: np.ndarray, k: float = 3.5) -> np.ndarray:
+    """
+    Returns a boolean mask marking which of `z`'s values are "inliers" by
+    a robust (median/MAD-based) outlier test, for use BEFORE plane fitting.
+
+    WHY THIS EXISTS: a plane's constant term is essentially the fitted
+    blob's mean height, and the ordinary mean/least-squares fit has no
+    protection against outliers. Depth-model hallucination -- a real,
+    documented failure mode (see config.py's DSM_OUTLIER_CLAMP_PERCENTILES
+    comments) -- can put a cluster of too-high pixels anywhere in a
+    building's footprint. Even a modest fraction of such pixels drags the
+    ENTIRE fitted plane upward to match, turning one bad patch into the
+    whole roof appearing to float far above its true height -- worse than
+    doing nothing, since flattening spreads the error across the full
+    footprint instead of leaving it localized.
+
+    Median + MAD (median absolute deviation) is used instead of
+    mean/stddev specifically because those are themselves not robust --
+    an outlier cluster inflates the mean and stddev too, weakening
+    exactly the check meant to catch it. 1.4826 rescales MAD to be
+    comparable to a standard deviation under a normal distribution, so
+    k=3.5 behaves similarly to a ~3.5-sigma cutoff.
+
+    If MAD is ~0 (blob is extremely uniform, no real spread to measure),
+    everything is treated as an inlier -- there's nothing to robustly
+    reject against.
+    """
+    median = np.median(z)
+    mad = np.median(np.abs(z - median))
+    if mad < 1e-9:
+        return np.ones_like(z, dtype=bool)
+    scaled_mad = 1.4826 * mad
+    return np.abs(z - median) <= k * scaled_mad
 
 
 def _fit_plane_lstsq(x: np.ndarray, y: np.ndarray, z: np.ndarray):
@@ -165,41 +252,71 @@ def _try_gable_split(x: np.ndarray, y: np.ndarray, z: np.ndarray,
                       valid: np.ndarray, min_pixels_per_half: int):
     """
     Attempts a two-plane (gable-style) fit: PCA on (x, y) of the VALID
-    pixels finds the blob's long axis, splits into two halves along the
-    perpendicular (short) axis, fits each half independently on valid
-    data. Evaluates over the FULL blob (x, y, including invalid/NaN
-    positions) so gaps get filled same as the single-plane path. Returns
-    the combined per-pixel plane values for the full blob, in the same
-    order as x/y, or None if either half would be too small to trust.
+    pixels finds the blob's long axis (the ridge direction) and short
+    axis (perpendicular to the ridge).
+
+    FIX: this used to fit each half of the blob as a FULLY INDEPENDENT
+    plane (a*x + b*y + c, separate a/b/c per side). Nothing constrained
+    those two planes to agree in height where they meet, so at the split
+    line -- a dead-straight PCA-derived line right through the blob's
+    centroid -- there was almost always a vertical jump between the two
+    planes' values. That jump rendered as a sharp, perfectly straight
+    ridge/trench slicing across the roof: not a real gable ridge (which
+    is a slope change, not a height discontinuity), just two mismatched
+    planes stitched together with no shared seam.
+
+    Instead, fit ONE continuous hinge surface in ridge-aligned
+    coordinates: z = a*|u| + b*v + c, where u is signed distance from the
+    ridge line (short-axis projection) and v is position along the ridge
+    (long-axis projection). |u| makes the surface a "tent" -- V-shaped in
+    cross-section -- that is mathematically guaranteed to be continuous
+    (height matches exactly) at u=0, i.e. exactly along the ridge, while
+    `a` and `b` still let each side tilt independently to fit the real
+    slopes. This is the actual shape of a gable roof: two planes meeting
+    cleanly at a ridge line, never a vertical step.
+
+    Returns (values, residual_rms): values is the combined per-pixel
+    surface for the full blob, in the same order as x/y; residual_rms is
+    this fit's own RMS residual over the valid pixels, so the caller can
+    compare it against the single-plane fit's residual before deciding
+    whether committing to a gable shape is actually justified, rather
+    than just trusting a high single-plane residual as proof of a real
+    ridge. Returns (None, None) if either half would be too small to
+    trust.
     """
     x_valid, y_valid, z_valid = x[valid], y[valid], z[valid]
 
     coords = np.column_stack([x_valid, y_valid])
-    centered_valid = coords - coords.mean(axis=0)
+    centroid = coords.mean(axis=0)
+    centered_valid = coords - centroid
     cov = np.cov(centered_valid.T)
     eigvals, eigvecs = np.linalg.eigh(cov)
     short_axis = eigvecs[:, np.argmin(eigvals)]  # perpendicular to the ridge
-    centroid = coords.mean(axis=0)
+    long_axis = eigvecs[:, np.argmax(eigvals)]   # along the ridge
 
-    proj_valid = centered_valid @ short_axis
-    side_a_valid = proj_valid >= 0
+    u_valid = centered_valid @ short_axis
+    v_valid = centered_valid @ long_axis
+
+    side_a_valid = u_valid >= 0
     side_b_valid = ~side_a_valid
-
     if side_a_valid.sum() < min_pixels_per_half or side_b_valid.sum() < min_pixels_per_half:
-        return None
+        return None, None
 
-    coeffs_a = _fit_plane_lstsq(x_valid[side_a_valid], y_valid[side_a_valid], z_valid[side_a_valid])
-    coeffs_b = _fit_plane_lstsq(x_valid[side_b_valid], y_valid[side_b_valid], z_valid[side_b_valid])
+    # z = a*|u| + b*v + c, least squares over valid points.
+    A = np.column_stack([np.abs(u_valid), v_valid, np.ones_like(u_valid)])
+    coeffs, *_ = np.linalg.lstsq(A, z_valid, rcond=None)
+    a, b, c = coeffs
 
-    # Assign every pixel in the FULL blob (valid or not) to a side using
-    # the same short-axis projection, then evaluate that side's plane.
-    proj_full = (np.column_stack([x, y]) - centroid) @ short_axis
-    on_side_a = proj_full >= 0
+    fitted_valid = a * np.abs(u_valid) + b * v_valid + c
+    residual_rms = float(np.sqrt(np.mean((fitted_valid - z_valid) ** 2)))
 
-    result = np.empty_like(x, dtype=np.float64)
-    result[on_side_a] = _eval_plane(coeffs_a, x[on_side_a], y[on_side_a])
-    result[~on_side_a] = _eval_plane(coeffs_b, x[~on_side_a], y[~on_side_a])
-    return result
+    # Evaluate over the FULL blob (including invalid/NaN positions) so
+    # gaps get filled, same as the single-plane path.
+    centered_full = np.column_stack([x, y]) - centroid
+    u_full = centered_full @ short_axis
+    v_full = centered_full @ long_axis
+    values = a * np.abs(u_full) + b * v_full + c
+    return values, residual_rms
 
 
 
