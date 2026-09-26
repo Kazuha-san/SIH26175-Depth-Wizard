@@ -67,17 +67,8 @@ const CONFIDENCE_LUT = Array.from({ length: 256 }, (_, i) => rampColorAt(i / 255
 
 /**
  * Decodes the backend's 8-bit grayscale confidence PNG and recolors it
- * through CONFIDENCE_RAMP on a canvas, returning a THREE.CanvasTexture --
- * this is what makes the uncertainty overlay (Innovation #2) actually
- * visible on the terrain instead of a hard-to-read grayscale map.
- *
- * Real confidence values tend to cluster in a narrow high range (e.g.
- * 0.85-0.98) rather than spanning 0-1, so mapping raw gray values
- * straight through the ramp only ever shows a thin sliver of it and the
- * whole terrain looks like one flat color. This does a per-image min/max
- * contrast stretch first (same idea as the heightmap preview) so the
- * full ramp -- and therefore real variation in confidence -- is always
- * visible, whatever the actual value range happens to be.
+ * through CONFIDENCE_RAMP (indigo -> violet -> teal) on a canvas, returning
+ * a THREE.CanvasTexture for 3D terrain rendering.
  */
 export const loadConfidenceTextureFromBase64 = (base64) => {
   if (!base64) {
@@ -101,19 +92,9 @@ export const loadConfidenceTextureFromBase64 = (base64) => {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const { data } = imageData;
 
-      let min = 255;
-      let max = 0;
       for (let i = 0; i < data.length; i += 4) {
-        const gray = data[i];
-        if (gray < min) min = gray;
-        if (gray > max) max = gray;
-      }
-      const range = Math.max(1, max - min);
-
-      for (let i = 0; i < data.length; i += 4) {
-        const gray = data[i]; // grayscale PNG -- R, G, B channels are equal
-        const stretched = Math.round(((gray - min) / range) * 255);
-        const [r, g, b] = CONFIDENCE_LUT[stretched];
+        const gray = data[i]; // grayscale PNG -- 0 (low confidence) to 255 (high confidence)
+        const [r, g, b] = CONFIDENCE_LUT[gray];
         data[i] = r;
         data[i + 1] = g;
         data[i + 2] = b;

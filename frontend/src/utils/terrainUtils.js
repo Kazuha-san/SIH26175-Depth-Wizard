@@ -3,26 +3,17 @@ import * as THREE from "three";
 export const TERRAIN_SIZE = 12;
 
 /**
- * Hypsometric-tint color ramp (classic elevation coloring: low = blue/
- * teal -> green -> yellow -> orange -> red -> white at the peaks) -- the
- * same idea as the reference DSM images (blue lowlands/water, green/
- * yellow midground, red/white highlands + a scale bar). t is normalized
+ * Hypsometric-tint color ramp (elevation coloring: low = blue/
+ * teal -> green -> yellow -> orange -> red at the peaks). t is normalized
  * height in [0, 1].
- *
- * This is what was MISSING before: the old renderer only ever drew the
- * raw uploaded photo (or a flat fallback color) with standard lighting --
- * there was no elevation-based color anywhere, and no way to read height
- * from color, which is the entire point of a DSM visualization.
  */
 export const ELEVATION_STOPS = [
   { t: 0.0, color: [0.07, 0.13, 0.42] },  // deep blue -- lowest points / water
   { t: 0.15, color: [0.02, 0.45, 0.55] }, // teal
-  { t: 0.32, color: [0.13, 0.55, 0.25] }, // green
-  { t: 0.5, color: [0.55, 0.72, 0.18] },  // yellow-green
-  { t: 0.65, color: [0.92, 0.78, 0.15] }, // yellow
-  { t: 0.8, color: [0.88, 0.45, 0.1] },   // orange
-  { t: 0.92, color: [0.68, 0.16, 0.1] },  // red
-  { t: 1.0, color: [1.0, 1.0, 1.0] },     // white -- peaks
+  { t: 0.35, color: [0.13, 0.60, 0.25] }, // green
+  { t: 0.55, color: [0.92, 0.78, 0.15] }, // yellow
+  { t: 0.78, color: [0.90, 0.45, 0.10] }, // orange
+  { t: 1.0, color: [0.85, 0.10, 0.10] },  // pure red -- peaks / highest points
 ];
 
 export const getElevationColor = (t) => {

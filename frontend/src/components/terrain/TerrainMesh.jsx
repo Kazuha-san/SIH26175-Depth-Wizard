@@ -147,7 +147,7 @@ const TerrainMesh = ({ resultData, verticalExaggeration = 0.5, textureMode = "el
           (it needs material.needsUpdate = true), so remounting avoids that
           gotcha entirely. */}
       <meshStandardMaterial
-        key={textureMode}
+        key={`${textureMode}-${texture ? "textured" : "untextured"}`}
         map={
           textureMode === "elevation" || textureMode === "solid"
             ? undefined
