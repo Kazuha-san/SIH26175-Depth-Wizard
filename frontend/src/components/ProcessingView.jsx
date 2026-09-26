@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 
 import { processImage } from "../utils/api";
-import TerrainScanAnimation from "./TerrainScanAnimation";
 
 const ProcessingView = ({ imageId, onComplete, onError }) => {
   const steps = [
@@ -69,15 +68,10 @@ const ProcessingView = ({ imageId, onComplete, onError }) => {
   const activeStep = steps[currentStep];
 
   return (
-    <section className="relative flex min-h-screen items-center overflow-hidden px-6 py-12">
-      <div className="relative z-10 mx-auto w-full max-w-xl">
-        {/* Focal animation */}
-        <div className="mx-auto h-64 w-full overflow-hidden rounded-3xl border border-gray-100 bg-white/70 shadow-[0_1px_2px_rgba(11,19,36,0.04)] backdrop-blur-sm">
-          <TerrainScanAnimation />
-        </div>
-
+    <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-12">
+      <div className="relative z-10 mx-auto w-full max-w-xl text-center">
         {/* Heading */}
-        <div className="mt-8 text-center">
+        <div>
           <h2 className="font-display text-2xl font-bold text-ink">
             Processing your imagery
           </h2>
@@ -111,3 +105,4 @@ const ProcessingView = ({ imageId, onComplete, onError }) => {
 };
 
 export default ProcessingView;
+
