@@ -17,8 +17,7 @@ no deployment.
 1. **Get the model checkpoints.** They're too large for GitHub
    (`landcover_seg_v6.pth` is 127MB, over GitHub's 100MB hard limit) so
    they're git-ignored, not in the repo. Get `depth_anything_v2_gamus_v4.pth`
-   and `landcover_seg_v6.pth` from **[TODO: add your shared Drive/storage
-   link here]** and place both in `backend/checkpoints/`.
+   and `landcover_seg_v6.pth` from [Google Drive](https://drive.google.com/drive/folders/1pdkNXeAOesDmYSyqgvvP2RAmnSGMaX4s?usp=sharing) and place both in `backend/checkpoints/`.
 2. Make sure you have **Python 3.10+** and **Node.js** installed.
 3. Run the launcher for your OS (see below) -- it handles the Python venv,
    dependencies, and frontend build automatically on first run.
